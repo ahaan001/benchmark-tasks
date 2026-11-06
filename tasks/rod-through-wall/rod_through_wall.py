@@ -7,32 +7,36 @@ window. A blue stand, 14 x 8 x 3 cm, is fixed to the table behind the wall, on t
 gripper fits through a window, so the rod has to change hands through the wall.
 
 Score (task_score), from every step of the trial and the final state:
-- 0 if the rod ever came within 2 mm of the wall (a touch), or its centre ever moved down faster than 0.5 m/s (a
-  drop).
+- 0 if the rod ever came within 2 mm of the wall or any part of the robot within 5 mm of it (a touch), or the
+  rod's centre ever moved down faster than 0.5 m/s (a drop). Both stay for the rest of the trial.
 - 0 if the rod's centre is not behind the wall at the end, or last went behind it any other way than through a
   window (over the top, round an end).
-- Otherwise the value of the window it went through, if the rod rests on the stand: large 0.4, medium 0.7,
-  small 1.0. A quarter of that value if it is anywhere else behind the wall.
-
-Run it with -E object_jitter=0: the scoring starts over whenever the rod lies at its start pose.
+- Otherwise the value of the window it went through (large 0.4, medium 0.7, small 1.0) if the rod rests on the
+  stand with both grippers at least 3 cm away from it. A quarter of that value if it is anywhere else behind the
+  wall, or still held.
 
 Run it:  inspect-robots run --embodiment yam_arena -E task=rod_through_wall.py -E object_jitter=0 \\
            --instruction "Pass the rod through the wall to the blue stand on the other side, using the smallest \\
 window you can, without touching the wall or dropping the rod." --scorer task_score ...
 """
 
+import functools
 import math
+import struct
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import numpy as np
 
-from yam_arena.constants import FINGER_CLOSED, FINGER_OPEN, PAD_TIP_PAST_TCP
+from yam_arena import YAM_URDF, station
+from yam_arena.constants import ARM_JOINTS, FINGER_OPEN, PAD_TIP_PAST_TCP
 from yam_arena.demo import Waypoint
 from yam_arena.task_file import TABLE_TOP, Box
+from yam_arena.urdf import forward_kinematics, rpy_matrix
 
 SCENE = "station"
-# success must hold this long: longer than release and retreat, so the rod must stay on the stand after the
-# gripper leaves (the scorer cannot see the gripper)
-SUCCESS_HOLD_S = 3.0
+SUCCESS_HOLD_S = 1.0  # the rod must stay at rest on the stand, let go, this long
 TOP = TABLE_TOP[SCENE]
 
 # ---- wall (m). Wall frame: u along the wall from its centre (away from the robot), v out of its near face
@@ -57,10 +61,13 @@ STAND_TOP = TOP + STAND_SIZE[2]
 # ---- thresholds ----
 CONTACT = 0.002  # the rod touched the wall when any point of its surface came this close to it
 SAMPLE = 0.0025  # spacing of the points checked on the rod's surface
+ROBOT_CONTACT = 0.005  # the robot touched the wall when any point of an arm or gripper came this close to it
+MESH_SAMPLE = 0.004  # spacing of the points checked on the robot's collision meshes
+RELEASE = 0.03  # the rod is let go when every part of both grippers is this far from it
+NEAR = 0.05  # robot points further than this from the wall are not measured
 FALL_SPEED = 0.5  # m/s: a rod whose centre moves down faster than this was dropped (a free fall of about 1.3 cm)
 ON_STAND_TOLERANCE = 0.005  # resting on the stand: lowest point within this of the stand's top
 FAR_SIDE_CREDIT = 0.25  # share of the window's value for a rod behind the wall but not on the stand
-AT_START, AT_START_DEG = 0.01, 5.0  # the rod lies at its start pose: the tracker starts again
 
 _AXES = np.array(
     [[math.cos(WALL_YAW), math.sin(WALL_YAW)], [-math.sin(WALL_YAW), math.cos(WALL_YAW)]]
@@ -174,23 +181,125 @@ ROD_SURFACE = _surface()
 ROD_CORNERS = np.array([[i, j, k] for i in (-1, 1) for j in (-1, 1) for k in (-1, 1)]) * np.array(ROD_SIZE) / 2
 
 
-def rod_points(objects, local=ROD_SURFACE) -> np.ndarray:
-    """Points of the rod (given in its own frame) as rows of (u, v, height above the table)."""
-    rod = objects["rod"]
-    world = rod.pos + local @ _rotation(rod.quat_xyzw).T
+def in_wall_frame(world) -> np.ndarray:
+    """World points as rows of (u, v, height above the table)."""
     return np.c_[to_wall(world[:, :2]), world[:, 2] - TOP]
+
+
+def rod_points(objects, local=ROD_SURFACE) -> np.ndarray:
+    """Points of the rod (given in its own frame) in the wall frame."""
+    rod = objects["rod"]
+    return in_wall_frame(rod.pos + local @ _rotation(rod.quat_xyzw).T)
 
 
 def rod_corners(objects) -> np.ndarray:
     return rod_points(objects, ROD_CORNERS)
 
 
+def to_wall_parts(points) -> float:
+    """Smallest distance (m) from points in the wall frame to the wall; 0 for a point inside it."""
+    outside = np.maximum(np.maximum(_LOW[:, None] - points, points - _HIGH[:, None]), 0.0)
+    return float(np.linalg.norm(outside, axis=2).min())
+
+
+# ---- the robot, as the simulator has it. The hooks are handed object states only, so the episode clock and the
+# arms' joints are read (never changed) from the yam_arena embodiment that calls them ----
+def _embodiment():
+    frame = sys._getframe(1)
+    while frame is not None:
+        owner = frame.f_locals.get("self")
+        if type(owner).__name__ == "YamArenaEmbodiment":
+            return owner
+        frame = frame.f_back
+    raise RuntimeError("rod_through_wall: no YamArenaEmbodiment on the call stack")
+
+
+def _sim_time() -> float:
+    """Seconds since the episode's reset. It goes back to 0 at each reset."""
+    return float(_embodiment()._t)
+
+
+def _arm_joints() -> dict:
+    """Per arm, its measured joints: [joint1..joint6 (rad), finger opening (m, FINGER_OPEN .. 0)]."""
+    owner = _embodiment()
+    out = {}
+    for name, (arm_ids, finger_ids) in owner._ids.items():
+        q = owner._base.scene[name].data.joint_pos.torch[0]
+        out[name.removesuffix("_robot")] = np.r_[q[arm_ids].cpu().numpy(), q[finger_ids].mean().item()].astype(float)
+    return out
+
+
+clock, arm_joints = _sim_time, _arm_joints  # the offline tests replace them
+
+
+def _triangles(stl: Path) -> np.ndarray:
+    data = stl.read_bytes()  # binary STL: 80-byte header, count, then 50 bytes per triangle
+    count = struct.unpack("<I", data[80:84])[0]
+    record = np.dtype([("normal", "<3f4"), ("corners", "<9f4"), ("attribute", "<u2")])
+    return np.frombuffer(data, dtype=record, count=count, offset=84)["corners"].reshape(-1, 3, 3).astype(float)
+
+
+def _sampled(triangles) -> np.ndarray:
+    """Points no more than MESH_SAMPLE apart over the triangles."""
+    splits = np.ceil(np.linalg.norm(triangles - np.roll(triangles, 1, axis=1), axis=2).max(1) / MESH_SAMPLE)
+    splits = np.maximum(splits, 1).astype(int)
+    out = []
+    for n in np.unique(splits):
+        weights = np.array([(i, j, n - i - j) for i in range(n + 1) for j in range(n + 1 - i)]) / n
+        out.append(np.einsum("wc,tcx->twx", weights, triangles[splits == n]).reshape(-1, 3))
+    return np.vstack(out)
+
+
+@functools.cache
+def link_surfaces() -> dict:
+    """Points over each moving link's collision mesh (the URDF's), in the link's frame."""
+    out = {}
+    for link in ET.parse(YAM_URDF).getroot().iter("link"):
+        clouds = []
+        for collision in link.findall("collision"):
+            mesh, origin = collision.find("geometry/mesh"), collision.find("origin")
+            if mesh is None:
+                continue
+            xyz, rpy = (np.array(origin.get(k).split(), dtype=float) for k in ("xyz", "rpy"))
+            triangles = _triangles(Path(YAM_URDF).parent / mesh.get("filename"))
+            clouds.append(_sampled(triangles) @ rpy_matrix(rpy).T + xyz)
+        if clouds and link.get("name") != "base":
+            out[link.get("name")] = np.unique(np.round(np.vstack(clouds) / (MESH_SAMPLE / 2)), axis=0) * MESH_SAMPLE / 2
+    return out
+
+
+GRIPPER_LINKS = ("gripper", "tip_left", "tip_right")
+
+
+def arm_points(joints, side, links=None) -> np.ndarray:
+    """World points over one arm's links (all moving links, or the ones named) for its measured joints."""
+    q = dict(zip(ARM_JOINTS, joints[:6], strict=True))
+    q["joint7"] = q["joint8"] = joints[6]
+    poses = forward_kinematics(YAM_URDF, q)
+    clouds = [p @ poses[n][:3, :3].T + poses[n][:3, 3] for n, p in link_surfaces().items() if not links or n in links]
+    return np.vstack(clouds) + np.asarray(station.BASES[side])
+
+
 # ---- task quantities ----
 def wall_clearance(objects) -> float:
     """Smallest distance (m) from the rod's surface to the wall; 0 where the rod is inside it."""
-    points = rod_points(objects)
-    outside = np.maximum(np.maximum(_LOW[:, None] - points, points - _HIGH[:, None]), 0.0)
-    return float(np.linalg.norm(outside, axis=2).min())
+    return to_wall_parts(rod_points(objects))
+
+
+def robot_clearance(arms) -> float:
+    """Smallest distance (m) from either arm to the wall, or NEAR when no part of the robot is that close."""
+    points = np.vstack([in_wall_frame(arm_points(joints, side)) for side, joints in arms.items()])
+    u, v, height = np.abs(points[:, 0]), np.abs(points[:, 1]), points[:, 2]
+    close = points[(u < WALL_LENGTH / 2 + NEAR) & (v < T / 2 + NEAR) & (height < WALL_H + NEAR)]
+    return min(to_wall_parts(close), NEAR) if len(close) else NEAR
+
+
+def gripper_clearance(objects, arms) -> float:
+    """Smallest distance (m) from either gripper (body and fingers) to the rod."""
+    rod = objects["rod"]
+    hands = np.vstack([arm_points(joints, side, GRIPPER_LINKS) for side, joints in arms.items()])
+    outside = np.maximum(np.abs((hands - rod.pos) @ _rotation(rod.quat_xyzw)) - np.array(ROD_SIZE) / 2, 0.0)
+    return float(np.linalg.norm(outside, axis=1).min())
 
 
 def window_of(objects) -> str | None:
@@ -224,39 +333,36 @@ def on_stand(objects) -> bool:
     )
 
 
-def at_start(objects) -> bool:
-    rod = objects["rod"]
-    along = abs(_rotation(rod.quat_xyzw)[:2, 1] @ _AXES[1])  # the rod's long axis against its start direction
-    turned = math.degrees(math.acos(min(along, 1.0)))
-    return bool(np.linalg.norm(rod.pos - np.array(ROD.pos)) < AT_START and turned < AT_START_DEG)
-
-
 # ---- what the final state does not show ----
 class Tracker:
-    """Reads the rod's pose after each control step and keeps: a touch of the wall, a drop, and the window of the
-    rod's latest pass to the far side. The hooks get no reset signal, so it starts again whenever the rod lies at
-    its start pose (which is true after each reset)."""
+    """Reads the rod and the arms after each control step and keeps, until the episode's next reset: a touch of the
+    wall by the rod or the robot, a drop, and the window of the rod's latest pass to the far side. A reset shows
+    as the episode clock going back; nothing the robot does to the rod clears a touch or a drop."""
 
     def __init__(self):
         self.restart()
-        self._last = None
+        self._last, self._t = None, None
 
     def restart(self):
         self.touched = False
         self.fell = False
         self.window = None  # of the latest pass to the far side; None: no pass yet, or not through a window
         self.near = True  # the rod's centre was on the near side at the last step
+        self.released = False  # at the last step, both grippers were clear of the rod
 
     def update(self, objects):
         """Read one step. success(), score() and distance() get the same dict each step, so a step is read once."""
         if objects is self._last:
             return
         self._last = objects
-        if at_start(objects):
+        t = clock()
+        if self._t is None or t <= self._t:
             self.restart()
-            return
-        self.touched |= wall_clearance(objects) < CONTACT
+        self._t = t
+        arms = arm_joints()
+        self.touched |= wall_clearance(objects) < CONTACT or robot_clearance(arms) < ROBOT_CONTACT
         self.fell |= bool(objects["rod"].lin_vel[2] < -FALL_SPEED)
+        self.released = gripper_clearance(objects, arms) >= RELEASE
         near = not behind_wall(objects)
         if self.near and not near:
             self.window = window_of(objects)
@@ -271,18 +377,19 @@ def _score(objects) -> float:
     if TRACKER.touched or TRACKER.fell or TRACKER.window is None or not behind_wall(objects):
         return 0.0
     value = WINDOWS[TRACKER.window]["value"]
-    return value if on_stand(objects) else FAR_SIDE_CREDIT * value
+    return value if on_stand(objects) and TRACKER.released else FAR_SIDE_CREDIT * value
 
 
 # ---- hooks read by yam_arena (task_score) ----
 def success(objects):
-    """Score 1.0: the rod rests on the stand after a pass through the small window, with no touch and no drop."""
+    """Score 1.0: the rod rests on the stand, let go, after a pass through the small window, with no touch and
+    no drop."""
     return _score(objects) == 1.0
 
 
 def score(objects):
     """0 after a touch or a drop, or if the rod's centre is not behind the wall after a pass through a window.
-    Otherwise the window's value with the rod at rest on the stand, a quarter of it anywhere else."""
+    Otherwise the window's value with the rod at rest on the stand and let go, a quarter of it anywhere else."""
     return _score(objects)
 
 
@@ -295,6 +402,13 @@ def distance(objects):
 GRIP_YAW = WALL_YAW - math.pi / 2  # fingers close along the wall, across the rod
 GRIP_FROM_END = 0.04  # left grip, from the rod's near end
 HANDOFF_V = 0.085  # both TCPs stay this far from the wall's mid-plane, so the wrists clear each other above it
+# finger target on the rod: each pad 3 mm into it. A full close (10 mm into it) twists the wrist joint 4 degrees
+GRIP = -(ROD_SIDE / 2 - 0.003)
+PADS_ABOVE_UNDERSIDE = 0.004  # pad tips this far above the rod's underside: the pads hold 16 mm of its 20 mm side
+# measured in the simulator with this grip, and taken out of the plan
+LEFT_TWIST = math.radians(1.6)  # the left wrist yields this much when its fingers close on the rod
+LEFT_SAG = 0.0025  # the rod hangs this far below where the left arm's plan holds it
+RIGHT_TAKE_UP = 0.003  # the rod settles this far when the right arm takes its weight
 
 
 def demo():
@@ -304,13 +418,16 @@ def demo():
     its centre is over the stand, lower it to 3 mm above the stand and let go."""
     u0, v0 = ROD_START
     tcp_to_tip = ROD_LENGTH - GRIP_FROM_END  # left TCP to the rod's far end
-    grasp_z = TOP + PAD_TIP_PAST_TCP + ROD_SIDE / 2  # pad tips at the rod's mid-height
+    tcp_above_centre = PAD_TIP_PAST_TCP + PADS_ABOVE_UNDERSIDE - ROD_SIDE / 2
+    grasp_z = TOP + ROD_SIDE / 2 + tcp_above_centre
     window_z = grasp_z + SILL + (WINDOWS["small"]["side"] - ROD_SIDE) / 2  # rod in the middle of the small window
-    place_z = grasp_z + STAND_SIZE[2] + 0.003  # rod 3 mm above the stand
+    push_z, draw_z = window_z + LEFT_SAG, window_z + RIGHT_TAKE_UP
+    place_z = grasp_z + STAND_SIZE[2] + 0.003 + RIGHT_TAKE_UP  # rod 3 mm above the stand
     travel_z = TOP + 0.14
     pick_v = v0 + ROD_LENGTH / 2 - GRIP_FROM_END
     centre_past_take = 2 * HANDOFF_V - tcp_to_tip + ROD_LENGTH / 2  # from the right TCP to the rod's centre
     place_v = STAND_UV[1] - centre_past_take
+    square = GRIP_YAW - LEFT_TWIST  # left grip yaw that holds the rod square to the wall
 
     def at(u, v, z):
         return (*to_world(u, v), z)
@@ -319,11 +436,11 @@ def demo():
         Waypoint(1.5, at(u0, pick_v, travel_z), FINGER_OPEN, "to the rod", GRIP_YAW),
         Waypoint(1.5, at(u0, pick_v, grasp_z), FINGER_OPEN, "descend", GRIP_YAW),
         Waypoint(0.5, at(u0, pick_v, grasp_z), FINGER_OPEN, "settle", GRIP_YAW),
-        Waypoint(1.0, at(u0, pick_v, grasp_z), FINGER_CLOSED, "close", GRIP_YAW),
-        Waypoint(0.5, at(u0, pick_v, grasp_z), FINGER_CLOSED, "hold", GRIP_YAW),
-        Waypoint(2.0, at(SMALL_U, pick_v, window_z), FINGER_CLOSED, "line up", GRIP_YAW),
-        Waypoint(0.5, at(SMALL_U, pick_v, window_z), FINGER_CLOSED, "settle", GRIP_YAW),
-        Waypoint(4.0, at(SMALL_U, HANDOFF_V, window_z), FINGER_CLOSED, "push through", GRIP_YAW),
+        Waypoint(1.0, at(u0, pick_v, grasp_z), GRIP, "close", GRIP_YAW),
+        Waypoint(0.5, at(u0, pick_v, grasp_z), GRIP, "hold", GRIP_YAW),
+        Waypoint(2.0, at(SMALL_U, pick_v, push_z), GRIP, "line up", square),
+        Waypoint(1.0, at(SMALL_U, pick_v, push_z), GRIP, "settle", square),
+        Waypoint(4.0, at(SMALL_U, HANDOFF_V, push_z), GRIP, "push through", square),
     ]
     pushed = sum(w.duration for w in left)
     right = [
@@ -331,22 +448,23 @@ def demo():
         Waypoint(pushed - 2.0, at(SMALL_U, -HANDOFF_V, travel_z), FINGER_OPEN, "wait for the rod", GRIP_YAW),
         Waypoint(1.5, at(SMALL_U, -HANDOFF_V, window_z), FINGER_OPEN, "descend", GRIP_YAW),
         Waypoint(0.5, at(SMALL_U, -HANDOFF_V, window_z), FINGER_OPEN, "settle", GRIP_YAW),
-        Waypoint(1.0, at(SMALL_U, -HANDOFF_V, window_z), FINGER_CLOSED, "close", GRIP_YAW),
-        Waypoint(0.5, at(SMALL_U, -HANDOFF_V, window_z), FINGER_CLOSED, "hold", GRIP_YAW),
+        Waypoint(1.0, at(SMALL_U, -HANDOFF_V, window_z), GRIP, "close", GRIP_YAW),
+        Waypoint(0.5, at(SMALL_U, -HANDOFF_V, window_z), GRIP, "hold", GRIP_YAW),
     ]
     taken = sum(w.duration for w in right)
     left += [
-        Waypoint(taken - pushed, at(SMALL_U, HANDOFF_V, window_z), FINGER_CLOSED, "hold for the right arm", GRIP_YAW),
-        Waypoint(1.0, at(SMALL_U, HANDOFF_V, window_z), FINGER_OPEN, "release", GRIP_YAW),
-        Waypoint(1.5, at(SMALL_U, pick_v, window_z), FINGER_OPEN, "back off", GRIP_YAW),
-        Waypoint(1.5, at(SMALL_U, pick_v, travel_z), FINGER_OPEN, "rise", GRIP_YAW),
+        Waypoint(taken - pushed, at(SMALL_U, HANDOFF_V, push_z), GRIP, "hold for the right arm", square),
+        Waypoint(1.0, at(SMALL_U, HANDOFF_V, push_z), FINGER_OPEN, "release", square),
+        Waypoint(1.5, at(SMALL_U, pick_v, push_z), FINGER_OPEN, "back off", square),
+        Waypoint(1.5, at(SMALL_U, pick_v, travel_z), FINGER_OPEN, "rise", square),
     ]
     right += [
-        Waypoint(1.5, at(SMALL_U, -HANDOFF_V, window_z), FINGER_CLOSED, "wait for the left arm", GRIP_YAW),
-        Waypoint(4.0, at(SMALL_U, place_v, window_z), FINGER_CLOSED, "draw out", GRIP_YAW),
-        Waypoint(0.5, at(SMALL_U, place_v, window_z), FINGER_CLOSED, "settle", GRIP_YAW),
-        Waypoint(1.5, at(SMALL_U, place_v, place_z), FINGER_CLOSED, "lower", GRIP_YAW),
-        Waypoint(0.5, at(SMALL_U, place_v, place_z), FINGER_CLOSED, "settle", GRIP_YAW),
+        Waypoint(1.2, at(SMALL_U, -HANDOFF_V, window_z), GRIP, "wait for the left arm", GRIP_YAW),
+        Waypoint(0.8, at(SMALL_U, -HANDOFF_V, draw_z), GRIP, "take the weight", GRIP_YAW),
+        Waypoint(4.0, at(SMALL_U, place_v, draw_z), GRIP, "draw out", GRIP_YAW),
+        Waypoint(0.5, at(SMALL_U, place_v, draw_z), GRIP, "settle", GRIP_YAW),
+        Waypoint(1.5, at(SMALL_U, place_v, place_z), GRIP, "lower", GRIP_YAW),
+        Waypoint(0.5, at(SMALL_U, place_v, place_z), GRIP, "settle", GRIP_YAW),
         Waypoint(0.8, at(SMALL_U, place_v, place_z), FINGER_OPEN, "release", GRIP_YAW),
         Waypoint(1.2, at(SMALL_U, place_v, travel_z), FINGER_OPEN, "retreat", GRIP_YAW),
         Waypoint(1.5, at(SMALL_U, place_v, travel_z), FINGER_OPEN, "wait", GRIP_YAW),
