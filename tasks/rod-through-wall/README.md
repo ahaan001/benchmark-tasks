@@ -93,6 +93,8 @@ Otherwise the window of the last pass sets the value (large 0.4, medium 0.7, sma
   from the embodiment's episode clock going back to 0. Putting the rod back at its start does not clear them
   (`check.py` tests this).
 - **The robot counts.** "Without touching the wall" covers the arms and grippers as well as the rod.
+- **No instruments in a real trial.** A touch is judged by eye from the video. The simulator's proximity tests
+  (2 mm for the rod, 5 mm for the robot) stand in for that judgement.
 - **The route counts.** Only the rod's last pass to the far side is scored, so a rod carried round the wall
   scores 0, and a rod pulled back out of one window and passed through another scores the second window.
 - **Placing includes letting go.** A rod held on the stand, or held anywhere behind the wall, earns a quarter of
@@ -112,12 +114,18 @@ Otherwise the window of the last pass sets the value (large 0.4, medium 0.7, sma
 
 ## Score a real trial
 
-1. Tape aluminium foil on the panel and on the rod, and wire them as a buzz-wire circuit that logs any contact.
-   Chalk on the window edges, checked on the rod after the trial, also works. Film the trial.
-2. Score 0 if the circuit closed at any time, if the video shows any part of the robot touching the wall, or if
-   the rod left the grippers and fell more than 1.3 cm.
-3. Score 0 if the mark at the rod's middle has not passed the wall at the end, or if the rod last passed the
+A real trial needs no instruments: no contact circuit, no foil, no chalk. It is scored by eye.
+
+1. Film the trial with a camera that sees the wall's windows (the rig's top camera does). Take a top photo at the
+   end.
+2. Score 0 if the video shows the rod or any part of the robot touching the wall at any time, or the rod leaving
+   the grippers and falling more than 1.3 cm.
+3. Score 0 if the pen mark at the rod's middle has not passed the wall at the end, or if the rod last passed the
    wall over its top or round an end.
 4. Read the window of the last pass from the video: large 0.4, medium 0.7, small 1.0.
 5. Give that value if the rod lies at rest on the blue stand with its middle mark over the block and both
    grippers at least 3 cm away. Give a quarter of it otherwise.
+
+Judging a touch by eye is less exact than the simulator's 2 mm test, most of all at the small window, where the
+rod has 7.5 mm on each side. That is accepted in exchange for a setup anyone can build from a panel, a rod and a
+block.
