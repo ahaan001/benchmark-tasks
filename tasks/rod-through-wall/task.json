@@ -17,5 +17,5 @@
   "run_limit": "1,200 steps (1 minute at 20 Hz)",
   "reset_notes": "Put the rod back on its start mark. The wall and the stand do not move. Re-chalk the window edges if chalk is used. The submitted runs use -E object_jitter=0.",
   "fidelity": "Wall, rod and stand are rigid boxes with one friction value (1.2). The wall is eight fixed boxes; the real panel is one piece. A touch is a proximity test: the rod's surface within 2 mm of the wall, or the robot's collision meshes within 5 mm, in place of the contact log and the video. A drop is the rod's centre moving down faster than 0.5 m/s (a 1.3 cm free fall). Release is read from the measured arm joints. The rod is plain brown in simulation.",
-  "scores": "TO FILL after the runs: Dream-1 run: ?; demo: ?"
+  "scores": "Dream-1 run: 0.0; demo: 1.0"
 }
