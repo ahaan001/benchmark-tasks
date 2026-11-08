@@ -105,8 +105,9 @@ within 3 mm and 5 degrees of their marks and at rest, no touch and no 0 conditio
 ## Runtime and seeds
 
 - **Run limit:** 1,200 control steps (1 minute at 20 Hz).
-- **Demo:** the plan lasts 37.5 s. In Isaac Sim it succeeds at step SUCCESS_STEP (SUCCESS_S s), about WALL_S s
-  of wall time on one L40S including the simulator's start-up, and is deterministic.
+- **Demo:** the plan lasts 37.5 s. In Isaac Sim it succeeds at step 666 (33.3 s, once the blue rod has been let
+  go and the gripper has risen clear), about 195 s of wall time on one L40S including the simulator's start-up,
+  and is deterministic.
 - **Seeds:** none. The layout is fixed (`object_jitter=0`), and the scripted demo is deterministic.
 
 ## Score a real trial

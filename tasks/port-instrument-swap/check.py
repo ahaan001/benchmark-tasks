@@ -188,7 +188,7 @@ def check_view():
     """The top camera (320 x 176) sees the port, both rods, the stand and the tray past the arms at their ready
     pose."""
     cam = station.top_camera()
-    lens = cam.lens.resized(320, 176)
+    lens = cam.lens.resized(320, 176)  # the station's lens is already the 640 x 360 crop of the calibration
     rot, pos = quat_xyzw_to_matrix(np.array(cam.rot_xyzw)), np.array(cam.pos)
 
     def project(points):

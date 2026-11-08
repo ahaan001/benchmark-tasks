@@ -17,5 +17,5 @@
   "run_limit": "1,200 steps (1 minute at 20 Hz)",
   "reset_notes": "Stand both flanges on their outlines, seat the grey rod in the port and the blue rod in the stand, and check that the slab, stand, tray and scope port have not moved. Nothing is consumed. The submitted runs use -E object_jitter=0.",
   "fidelity": "Rigid boxes, friction 1.2: a 2 cm square well in a fixed slab stands for the cannula, two loose 15 g posts for its flanges, 1.2 cm 40 g rods for instruments. No trocar seal, insufflation or tissue. Flange displacement and tilt come from their poses; a touch is any point of a rod's surface or of the robot's collision meshes (placed from the measured joints) within 2 mm of a flange at a 20 Hz step, in place of eye judgement; seating from the rod's base and tilt; release from gripper geometry.",
-  "scores": "Dream-1 run: TBD; demo: TBD"
+  "scores": "Dream-1 run: 0.0 (it ran the full 1,200 steps without refusing and did not take the grey instrument out of the port); demo: 1.0 (the full exchange, success at step 666)."
 }
