@@ -103,8 +103,9 @@ the last step. Possible scores: 0, 0.1, ..., 1.0.
 ## Runtime and seeds
 
 - **Run limit:** 2,400 control steps (2 minutes at 20 Hz).
-- **Demo:** the plan lasts 89.5 s (1,790 steps; about 4.4 s per pinch-and-turn cycle). In Isaac Sim it is
-  deterministic; its wall time on one L40S is noted below the run results.
+- **Demo:** the plan lasts 89.5 s (1,790 steps; about 4.5 s per pinch-and-turn cycle). In Isaac Sim it succeeds
+  at step 1,782 (89.1 s), is deterministic, and took about 10 minutes of wall time on one L40S that two other
+  simulations were sharing (the first twist turned the vial 201 of the commanded 210 degrees; drift under 2 mm).
 - **Seeds:** none. The layout is fixed (`object_jitter=0`), and the scripted demo is deterministic.
 
 ## Score a real trial
