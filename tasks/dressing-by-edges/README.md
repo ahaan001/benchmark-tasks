@@ -105,8 +105,9 @@ step. Possible scores: 0, 0.125, 0.25, 0.5 and 1.0.
 ## Runtime and seeds
 
 - **Run limit:** 1,200 control steps (1 minute at 20 Hz).
-- **Demo:** the plan lasts 14.0 s; offline it reaches the 1.0 state at about 13 s. Simulator timings to be filled
-  after the run.
+- **Demo:** the plan lasts 14.0 s. In Isaac Sim it succeeds at step 259 (13.0 s), about 100 s of wall time on one
+  L40S including the simulator's start-up, and is deterministic (open loop from a fixed layout).
+- **Dream-1:** ran the full 1,200 steps in about 4 minutes of wall time.
 - **Seeds:** none. The layout is fixed (`object_jitter=0`), and the scripted demo is deterministic.
 
 ## Score a real trial
