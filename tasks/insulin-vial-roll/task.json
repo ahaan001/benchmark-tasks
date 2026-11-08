@@ -17,5 +17,6 @@
   "run_limit": "2,400 steps (2 minutes at 20 Hz)",
   "reset_notes": "Stand the cloudy vial upright in the middle of the taped square with its mark line facing +x, and the clear vial upright on its mark 10 cm to the right; put the pen-needle box and the meter back on their outlines; check that the mat, the tape and the sharps container have not moved. Nothing is consumed. The submitted runs use -E object_jitter=0.",
   "fidelity": "Rigid primitives with one friction value (1.2): the vials are 25 g flat-coloured cylinders, no liquid or label is simulated and no mark line is drawn. Rolling between the palms is replaced by turning the standing vial about its own axis on the mat, the same relative motion. Rotation is read from the vial's pose each control step (20 Hz), lift and tilt from its pose, and letting go from the robot's collision meshes placed at its measured joints, in place of judging by eye.",
-  "scores": "Dream-1 run: 0.0 (drove all 2,400 steps: the right gripper came down on the cloudy vial once, nudged it and moved away without turning it); demo: 1.0"
+  "scores": "Dream-1 run: 0.0 (drove all 2,400 steps: the right gripper came down on the cloudy vial once, nudged it and moved away without turning it); demo: 1.0",
+  "media": "M-NTDYXM"
 }
