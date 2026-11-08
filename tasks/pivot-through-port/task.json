@@ -17,5 +17,6 @@
   "run_limit": "2,400 steps (2 minutes at 20 Hz)",
   "reset_notes": "Stand each post and each peg on its tape mark, lay the rod on its blocks with the tip toward the wall, and check that the wall, the lintel and the blocks have not moved. Nothing is consumed. The submitted runs use -E object_jitter=0.",
   "fidelity": "Rigid boxes with one friction value (1.2). The YAM holds the rod level and can only turn it about the vertical, so the pivot about the slot is a plane version of a real remote centre of motion. A touch is any point of the rod's surface or of the robot's collision meshes (placed from the measured joints) within 2 mm of a post at a control step (20 Hz), or a post off its mark, in place of judging contact by eye. Post and peg displacement and tilt are read from their poses. No tissue is simulated.",
-  "scores": "Dream-1 run: 0.0 (no refusal; it drove all 2,400 steps, hovered the right gripper over the rod and closed on it several times without lifting it); demo: 1.0"
+  "scores": "Dream-1 run: 0.0 (no refusal; it drove all 2,400 steps, hovered the right gripper over the rod and closed on it several times without lifting it); demo: 1.0",
+  "media": "M-VSTK6H"
 }
