@@ -16,5 +16,6 @@
   "run_limit": "1,200 steps (1 minute at 20 Hz)",
   "reset_notes": "Lay a fresh dressing flat and centred on the pack tray (a real trial uses a new sterile pad; in simulation nothing is consumed), put the tape roll back on its mark, and check that the drape, the skin pad, the wound insert, the pack tray, the saline bottle and the glove box have not moved. The submitted runs use -E object_jitter=0.",
   "fidelity": "Rigid primitives: the dressing is a 6 g, 4 mm rigid white box (a real pad is soft and slightly compliant); the skin pad, wound insert and pack tray are fixed boxes. A key-part touch is any point of the robot's collision meshes, placed from its measured joints, within 2 mm of the dressing's central 5 x 5 cm at a 20 Hz control step, standing in for judging it from video. Coverage uses the wound's outline against the dressing's footprint from their poses. No adhesive or exudate. Friction 1.2.",
-  "scores": "Dream-1 run: 0.0 (the right gripper came down beside the pack within the first 10 s, then moved between the pack and the skin pad with its fingers closed and empty for the rest of the trial; the dressing never left the pack tray); demo: 1.0"
+  "scores": "Dream-1 run: 0.0 (the right gripper came down beside the pack within the first 10 s, then moved between the pack and the skin pad with its fingers closed and empty for the rest of the trial; the dressing never left the pack tray); demo: 1.0",
+  "media": "M-ET8LZ2"
 }
