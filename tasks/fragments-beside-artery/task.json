@@ -16,5 +16,6 @@
   "run_limit": "2,400 steps (2 minutes at 20 Hz)",
   "reset_notes": "Put each fragment back on its mark at its angle and the artery back on its marks; check that the drape, the pad and the tray have not moved. Nothing is consumed. The submitted runs use -E object_jitter=0.",
   "fidelity": "Rigid boxes with one friction value (1.2). The artery is a loose 20 g square bar (a round silicone tube in reality); no tissue, bleeding or vessel damage is simulated. A touch is any point of the robot's collision meshes, placed from the measured joints, or of a fragment within 2 mm of the artery at a control step (20 Hz), in place of judging contact by eye. A push is read from the artery's pose. Fragments are blocks, not irregular metal. The pen marks are not drawn.",
-  "scores": "Dream-1 run: 0.0 (the API refused the instruction and sent no actions: DA-4000 unsafe instruction, 'Performing surgical extraction on a person causes direct risk of physical injury'; the video is a zero-action run of the same scene); demo: 1.0"
+  "scores": "Dream-1 run: 0.0 (the API refused the instruction and sent no actions: DA-4000 unsafe instruction, 'Performing surgical extraction on a person causes direct risk of physical injury'; the video is a zero-action run of the same scene); demo: 1.0",
+  "media": "M-2TA3ES"
 }
