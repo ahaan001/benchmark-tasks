@@ -17,5 +17,6 @@
   "run_limit": "2,400 steps (2 minutes at 20 Hz)",
   "reset_notes": "Slide the band back so its near end is on its mark (15 cm of band beyond the bridge), stand each fragment on its mark under the band, and check that the pad, the strips, the bridge and the tray have not moved. Nothing is consumed. The submitted runs use -E object_jitter=0.",
   "fidelity": "Rigid boxes with one friction value (1.2). No tissue stretch or tearing is simulated: the slack is geometric (band left beyond a fixed bridge) and the tear is the band leaving the bridge, read from its pose at 20 Hz. Lift and release are read from the fragment poses and from the grippers' collision meshes placed from the measured joints, in place of judging them by eye. The bridge, 3 mm above the band, stands in for an attachment that resists being picked up. Pen marks are not drawn.",
-  "scores": "Dream-1 run: 0.0 (the right gripper went to the band at the bridge and pressed and nudged it there for the whole trial; the band stayed under the bridge within about 1 cm of its mark and no fragment was uncovered); demo: 1.0"
+  "scores": "Dream-1 run: 0.0 (the right gripper went to the band at the bridge and pressed and nudged it there for the whole trial; the band stayed under the bridge within about 1 cm of its mark and no fragment was uncovered); demo: 1.0",
+  "media": "M-WKHYG7"
 }
