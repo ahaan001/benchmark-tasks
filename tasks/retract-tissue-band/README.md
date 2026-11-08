@@ -15,8 +15,6 @@ score, so does leaving the band retracted at the end, and doing nothing scores 0
 - `check.py`: offline check of the layout, the camera view, the scoring and the demo.
 - `trace.py`: the same task with the demo's tracking error, the band's ends and slack, the tracker's state and each
   fragment's share printed every 5 steps, for tuning the demo.
-- `zero_action.py`: the same task with an empty plan, which records a zero-action video to stand in for the
-  Dream-1 run if the Dream API refuses the instruction and sends no actions.
 
 Environment: Isaac Lab Arena 0.3.1, Isaac Sim 6.1, inspect-robots 0.60.0, yam-isaac-lab-arena at 0059d02. The
 scene uses boxes only, no library models and no third-party assets.
@@ -41,8 +39,7 @@ inspect-robots run --embodiment yam_arena --policy yam_scripted \
 ```
 
 The run prints `task_score`. Render the camera videos with `inspect-robots video <log>.json`. Add
-`-E headless=false` to watch a run in the Isaac Sim window. A zero-action video is the scripted command with
-`-E task=tasks/retract-tissue-band/zero_action.py -P hold_s=120`.
+`-E headless=false` to watch a run in the Isaac Sim window.
 
 Offline check, without the simulator (a few minutes):
 
@@ -125,7 +122,8 @@ Otherwise `task_score` is `score()` on the last step. Possible scores: multiples
 ## Runtime and seeds
 
 - **Run limit:** 2,400 control steps (2 minutes at 20 Hz).
-- **Demo:** the plan lasts 50.8 s. TO FILL after the simulator run: steps to success and wall time on one L40S.
+- **Demo:** the plan lasts 50.8 s. In Isaac Sim it succeeds at step 1025 (51.3 s), about 180 s of wall time on one
+  L40S including the simulator's start-up, and is deterministic: two runs gave the same trajectory and score.
 - **Seeds:** none. The layout is fixed (`object_jitter=0`), and the scripted demo is deterministic.
 
 ## Score a real trial
