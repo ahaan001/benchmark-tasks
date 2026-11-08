@@ -51,7 +51,8 @@ python tasks/retract-tissue-band/check.py
 ```
 
 It measures the room the gripper has at the band's near end and at each uncovered fragment, how far the band can be
-lifted before the bridge stops it, and what the top camera sees past the arms; scores 32 hand-built trials; plays
+lifted before the bridge stops it, which of the demo's sites each arm reaches, and what the top camera sees past the
+arms; scores 32 hand-built trials; plays
 the demo through the IK at 20 Hz with the band and each fragment following the gripper that holds them; and plays
 the naive variant of the demo, which slides the band 18 cm.
 
@@ -109,6 +110,9 @@ Otherwise `task_score` is `score()` on the last step. Possible scores: multiples
 - **Taking out means lifting.** A fragment swept along or out of the channel without being lifted earns nothing,
   even if it is picked up later.
 - **No order is scored.** Either fragment may come first.
+- **Either arm may be used.** The scoring reads both grippers' measured joints. With the channel 14 cm to the
+  right of the midline, the right arm reaches everything; the left arm reaches the band's near end but not the
+  fragments or the tray (`check.py` solves the IK for both arms at the demo's sites).
 - **The grasp has to fit the channel.** With the fingers closing across the 6 cm channel they pass 2.4 mm from a
   strip at its top; closing along the channel they pass 13.4 mm from the strips and 9.1 mm from the retracted band.
   The band is pinched across its 8 cm width with the fingers fully open (9.3 cm between the pads), 6 mm above the

@@ -3,8 +3,8 @@ along its middle running away from the robot: two red strips 6 cm apart, 2.5 cm 
 pink tissue band, 25 x 8 x 2 cm, lies across the strips over the channel, from 18 to 43 cm in front of the arm
 bases, and passes under a yellow ligament bridge 26 to 28 cm out, so 15 cm of band shows beyond the bridge. Two
 dark grey metal fragments, 2 cm cubes, lie on the channel floor under that far part of the band, 40 and 33.5 cm
-out. A steel tray, 14 x 10 cm inside with 3 cm walls, is fixed to the table to the right of the pad. The left arm
-has nothing to do.
+out. A steel tray, 14 x 10 cm inside with 3 cm walls, is fixed to the table to the right of the pad. Either arm may
+be used; the right arm reaches everything, the left arm only the band.
 
 Sliding the band toward the robot uncovers the fragments: the one 40 cm out after 7 cm, the one 33.5 cm out after
 13.5 cm. After 17 cm the band's far end comes out from under the bridge.

@@ -98,8 +98,23 @@ def gripper_at(xyz, yaw, finger=FINGER_OPEN) -> dict:
     return {**PARKED, "right": np.r_[q, finger]}
 
 
+def reaches(side, points, yaws) -> bool:
+    """Whether an arm has an IK solution at every point, under 0.5 mm with every joint 3 degrees inside its limits,
+    for one of the grip yaws."""
+    for yaw in yaws:
+        rot = ik.matrix_to_quat_xyzw(grip_rotation(yaw))
+        margins = []
+        for p in points:
+            q, miss, _ = ik.solve(p, rot, READY, station.BASES[side])
+            margins.append(-1.0 if miss >= 5e-4 else np.degrees(np.minimum(q - ik.LOWER, ik.UPPER - q)).min())
+        if min(margins) > 3.0:
+            return True
+    return False
+
+
 BAND_Z = T.STRIP_TOP + T.BAND_PADS_ABOVE + PAD_TIP_PAST_TCP  # TCP height at the band grasp
 FRAGMENT_Z = T.PAD_TOP + T.PADS_ABOVE_UNDERSIDE + PAD_TIP_PAST_TCP  # TCP height at a fragment grasp
+TRAY_Z = T.TRAY_FLOOR_TOP + T.DROP + T.PADS_ABOVE_UNDERSIDE + PAD_TIP_PAST_TCP  # TCP height at a tray drop
 WIDE = -(T.FRAGMENT_SIZE[0] + T.APPROACH) / 2  # finger target coming down on a fragment
 
 
@@ -195,6 +210,18 @@ def check_design():
             f"  band slid {slide * 100:4.1f} cm: its near end rises at most {lift * MM:.1f} mm before the bridge stops it"
         )
     assert T.BRIDGE_CLEAR * T.BAND_SIZE[0] / T.SLACK < SAFE, "the band can be lifted off the strips at the start"
+    # R4: the right arm reaches every demo site at grasp and travel height; the left arm is reported
+    yaws = (T.FRAGMENT_YAW, 0.0, -T.FRAGMENT_YAW)
+    sites = {
+        "the band at its mark": ([(T.GRIP_X, T.Y0, BAND_Z)], (T.BAND_YAW,)),
+        "the band slid": ([(T.GRIP_X - SLIDE_D, T.Y0, BAND_Z)], (T.BAND_YAW,)),
+        **{n: ([(*T.FRAGMENTS[n].pos[:2], z) for z in (FRAGMENT_Z, T.TRAVEL)], yaws) for n in T.FRAGMENTS},
+        "the tray": ([(*T.TRAY_SPOTS[n], z) for n in T.TRAY_SPOTS for z in (TRAY_Z, T.TRAVEL)], yaws),
+    }
+    for side in ("right", "left"):
+        reached = [what for what, (points, options) in sites.items() if reaches(side, points, options)]
+        print(f"  {side} arm reaches {', '.join(reached) or 'nothing'}")
+        assert side == "left" or len(reached) == len(sites), "the right arm cannot reach every demo site"
 
 
 def check_view():
