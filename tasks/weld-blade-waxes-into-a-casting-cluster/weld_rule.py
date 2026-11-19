@@ -52,6 +52,7 @@ class Obs:
 @dataclass
 class Joint:
     dose: float = 0.0
+    slot: int | None = None  # the mark the joint was heated at
     off_t: float | None = None  # when the blade last left a hot joint
     wet_t: float | None = None
     set_t: float | None = None  # when the pattern was last put where it now sets
@@ -129,9 +130,11 @@ class Rule:
                 if self.moved(pose, j.weld_pose, KNOCK_POS, KNOCK_ANG):
                     self.knock = True
                 continue
-            heating = on_sprue and self.touches_gate_end(blade, pose)
+            at = self.at_mark(pose)
+            heating = on_sprue and at is not None and (j.slot in (None, at)) and self.touches_gate_end(blade, pose)
             if heating:
                 j.dose += dt
+                j.slot = at
                 j.off_t = None
                 j.wet_t = None
                 if j.dose > D_MAX:
@@ -139,20 +142,20 @@ class Rule:
             elif j.dose > 0.0 and j.wet_t is None:
                 j.off_t = o.t if j.off_t is None else j.off_t
                 gate_on = self.touches_sprue(c.to_world(*pose, GATE_FACE), need=3)
-                if gate_on and j.dose >= D_MIN and o.t - j.off_t <= T_OPEN:
+                if gate_on and j.dose >= D_MIN and o.t - j.off_t <= T_OPEN and self.at_mark(pose) == j.slot:
                     j.wet_t, j.set_t, j.anchor = o.t, o.t, pose
                     self.events.append(f"{i}: closed with {j.dose:.1f} s of heat")
                 elif o.t - j.off_t > T_OPEN:
                     self.events.append(f"{i}: cold, {T_OPEN:g} s after the blade left without the gate on the sprue")
-                    j.dose, j.off_t = 0.0, None  # cold: heat it again
+                    j.dose, j.off_t, j.slot = 0.0, None, None  # cold: heat it again
             if j.wet_t is not None and not heating:
                 if self.moved(pose, j.anchor, SET_POS, SET_ANG):
-                    if o.t - j.wet_t <= T_ADJUST and self.touches_sprue(c.to_world(*pose, GATE_FACE), need=3):
+                    if o.t - j.wet_t <= T_ADJUST and self.touches_sprue(c.to_world(*pose, GATE_FACE), need=3) and self.at_mark(pose) == j.slot:
                         j.set_t, j.anchor = o.t, pose  # still liquid: set square, and the set starts again
                     else:
                         moved = (np.linalg.norm(np.asarray(pose[1]) - np.asarray(j.anchor[1])) * 1000, c.angle_deg(pose[0], j.anchor[0]))
                         self.events.append(f"{i}: cracked {o.t - j.set_t:.1f} s into the set, moved {moved[0]:.1f} mm, {moved[1]:.1f} deg")
-                        j.dose, j.off_t, j.wet_t, j.set_t, j.anchor = 0.0, None, None, None, None  # cracked while setting
+                        j.dose, j.off_t, j.wet_t, j.set_t, j.anchor, j.slot = 0.0, None, None, None, None, None  # cracked while setting
                 elif o.t - j.set_t >= T_SET:
                     j.welded, j.weld_pose = True, pose
                     self.events.append(f"{i}: welded")
@@ -161,7 +164,7 @@ class Rule:
             ref = c.NEIGHBOURS[k]
             if self.moved(pose, (ref[2], ref[1]), KNOCK_POS, KNOCK_ANG):
                 self.knock = True
-            if self.near_boxes(blade, pose, c.BOXES, CONTACT):
+            if self.near_boxes(blade, pose, MARKED, CONTACT):
                 self.neighbour_marked[k] = True
         if np.any(np.linalg.norm(o.tips[:, None, :] - blade[None, :, :], axis=2) <= PAD):
             self.pad = True
@@ -196,6 +199,17 @@ class Rule:
     @staticmethod
     def touches_sprue_within(points, dist) -> bool:
         return bool(np.any(c.box_distance(points, SPRUE_C, SPRUE_H, np.eye(3))[0] <= dist))
+
+    @staticmethod
+    def at_mark(pose) -> int | None:
+        """The mark a gate's end is at: on the sprue's -y face (within 4 mm off it), centred within MARK_TOL across and along the sprue."""
+        p = np.asarray(pose[1])
+        if abs(p[0] - c.CX) > MARK_TOL or not -0.004 <= p[1] - c.FACE_Y <= 0.001:
+            return None
+        for k, z in enumerate(c.SLOTS_Z):
+            if abs(p[2] - z) <= MARK_TOL:
+                return k
+        return None
 
     # -- the score
     def on_mark(self, pose) -> int | None:

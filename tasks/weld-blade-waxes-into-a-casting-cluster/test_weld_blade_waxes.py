@@ -146,6 +146,23 @@ def test_red_team():
     tr.loose[0] = g
     tr.run(5.0, tips=holding_tips(g), knife=knife_at(0, True, dz=0.0095))
     check("blade not over the middle of the gate face: no heat", tr.rule.joints[0].dose, 0.0)
+    tr = Trace()  # heated 2.5 cm below the lowest mark, then slid onto it
+    g = gap_pose(0, c.BLADE[1] + 0.0002)
+    low = (g[0], g[1] - np.array([0.0, 0.0, 0.025]))
+    tr.loose[0] = low
+    R, p = knife_at(0, True)
+    tr.run(3.0, tips=holding_tips(low), knife=(R, p - np.array([0.0, 0.0, 0.025])))
+    tr.run(0.5, knife=knife_at(0, False))
+    tr.loose[0] = c.slot_pose(0)
+    tr.run(11.0, tips=holding_tips(tr.loose[0]))
+    check("heated off the mark, closed on it: no weld", tr.rule.joints[0].welded, False)
+    tr = Trace()  # heated at the lowest mark, closed at the middle one
+    tr.loose[0] = gap_pose(0, c.BLADE[1] + 0.0002)
+    tr.run(3.0, tips=holding_tips(tr.loose[0]), knife=knife_at(0, True))
+    tr.run(0.5, knife=knife_at(0, False))
+    tr.loose[0] = c.slot_pose(1)
+    tr.run(11.0, tips=holding_tips(tr.loose[0]))
+    check("heated at one mark, closed at another: no weld", tr.rule.joints[0].welded, False)
     tr = Trace()  # contact in a single step
     tr.loose[0] = gap_pose(0, c.BLADE[1] + 0.0002)
     tr.run(0.05, knife=knife_at(0, True))
@@ -244,7 +261,7 @@ def test_latches():
     tr.run(2.0, knife=KNIFE_HOME)
     check("welded but still held at the end: that pattern 0", tr.score(), 0.0)
     tr = Trace()
-    tr.weld(0, 1)  # the lowest pattern welded at the middle mark: fine, it is on a mark
+    tr.weld(0, 1)  # pattern 0 welded at the middle mark: fine, it is on a mark
     tr.weld(1, 1)  # a second one onto the same mark cannot score twice
     tr.run(2.0, knife=KNIFE_HOME, tips=AWAY.copy())
     check("two patterns on one mark score once", tr.score(), 0.25 + 0.15 + 0.10)

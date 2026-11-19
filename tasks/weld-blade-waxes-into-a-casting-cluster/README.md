@@ -88,9 +88,9 @@ for melt-back (42 mm instead of 45); photos for melt marks; video for knocks and
 
 The simulator cannot melt wax, so melting and setting are bookkeeping on real contact and real stillness:
 
-1. **Heat.** A joint gains heat only while points on the blade's faces are within 0.5 mm of the gate's end face and of the sprue at the same time, and the
-   blade covers the middle of the gate's face. Each control step adds 0.05 s.
-2. **Close.** Within 4 s of the blade leaving, the gate's end face (three of five points) must be on the sprue, with 2 s of heat or more. Otherwise the
+1. **Heat.** A joint gains heat only while points on the blade's faces are within 0.5 mm of the gate's end face and of the sprue at the same time, the
+   blade covers the middle of the gate's face, and the gate is at a mark (centred within 3 mm, within 4 mm of the face). Each control step adds 0.05 s.
+2. **Close.** Within 4 s of the blade leaving, the gate's end face (three of five points) must be on the sprue at the mark it was heated at, with 2 s of heat or more. Otherwise the
    joint is cold and must be heated again.
 3. **Set.** In the first 2 s after the faces meet the wax is still liquid: the pattern may be set square there, and the set starts again. It must then stay
    within 1 mm and 2 degrees for 10 s. Leaving that band cracks the joint (cold again). Letting go needs
@@ -106,6 +106,8 @@ Red-team cases, all in the offline tests, all scoring as intended:
 - a blade hovering in the gap;
 - a blade on the sprue only;
 - a blade over the gate's edge only;
+- heating 2.5 cm below a mark, then sliding onto it;
+- heating at one mark and closing at another;
 - one step of contact;
 - the gate pressed on first;
 - letting go at 4 s;
@@ -145,7 +147,8 @@ Red-team cases, all in the offline tests, all scoring as intended:
 | Drip tray; Kapton tape over the finger pads | aluminium sheet; hardware store | under $15 |
 | Steel rule, engineer's square, camera | any | under $30 |
 
-Each trial uses three patterns (about 51 g of wax, under $1.50), poured ahead of time. The three new welds are cut off with the warm knife and the sprue's
+Each trial uses three patterns (about 51 g of wax, under $1.50), poured in batches ahead of time. The knife's cord runs off the table to its
+controller; the simulation has no cord. A printed locating template checks the three patterns already on the cluster. The three new welds are cut off with the warm knife and the sprue's
 face is scraped flat (about 2 minutes); the cluster with its three welded patterns is reused. The knife is hot (220 C). It lies in a guarded rest, the pads
 are taped, and the operator resets with heat gloves after the knife has cooled in its rest.
 
