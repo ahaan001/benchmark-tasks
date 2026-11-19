@@ -268,6 +268,9 @@ class Trial:
                 m.set_gains(env, LOOSE[i], link, k, d)
                 m.lock(env, LOOSE[i], link, stiffness=k, effort=e)
         self.rule.locks.clear()
+        for e in self.rule.events:
+            print(f"[weld] t {o.t:5.1f} pattern {e}", flush=True)
+        self.rule.events.clear()
         self.n += 1
         s = self.rule.score(o)
         self.hold = self.hold + 1 if s >= 0.999 else 0
@@ -390,11 +393,12 @@ def demo_script(ctx):
         Rk, pk = knife_pose(env)
         Rp, pp = pose(env, LOOSE[i])
         tilt = np.degrees(np.arccos(np.clip(np.diag(c.KNIFE_REST_R.T @ Rk), -1, 1)))
+        ypr = np.degrees([math.atan2(Rp[1, 0], Rp[0, 0]), -math.asin(np.clip(Rp[2, 0], -1, 1)), math.atan2(Rp[2, 1], Rp[2, 2])])
         blade = c.to_world(Rk, pk, c.BLADE_PTS)
         dg = c.box_distance(c.to_local(Rp, pp, blade), *c.BOXES[0][1:])[0].min()
         ds = c.box_distance(blade, w.SPRUE_C, w.SPRUE_H, np.eye(3))[0].min()
         print(f"[look] {label}: blade centre {np.round((pk - [c.CX, c.FACE_Y, c.SLOTS_Z[k]]) * 1000, 1)} mm, knife axes off {np.round(tilt, 1)} deg; "
-              f"gate end {np.round((pp - [c.CX, c.FACE_Y, c.SLOTS_Z[k]]) * 1000, 1)} mm, {c.angle_deg(Rp, np.eye(3)):.1f} deg; blade to gate {dg * 1000:.2f} mm, "
+              f"gate end {np.round((pp - [c.CX, c.FACE_Y, c.SLOTS_Z[k]]) * 1000, 1)} mm, {c.angle_deg(Rp, np.eye(3)):.1f} deg (yaw, pitch, roll {np.round(ypr, 1)}); blade to gate {dg * 1000:.2f} mm, "
               f"to sprue {ds * 1000:.2f} mm", flush=True)
     ok = yield from take(l, grasp_at, 0.0, 2 * c.HANDLE_R, g0, 20.0, "take the knife", knife_at)
     if not ok:
@@ -411,6 +415,12 @@ def demo_script(ctx):
         yield from r.move(r.at() + [0.0, 0.0, 0.02], t=0.6, label=f"pattern {i} up")
         goal = np.array([c.CX, c.FACE_Y - GAP_OPEN, c.SLOTS_Z[k]]) + UP
         yield from r.move(goal + np.array([0.0, -0.04, 0.0]) + (plat_at(i) - gate_end(i)) + np.array([0.0, 0.0, PLAT_TCP]), t=3.0, label=f"pattern {i} 4 cm off its mark")
+        for _ in range(2):  # a pattern taken a little yawed in the hand is turned square by the wrist (a yaw-only grip cannot undo pitch or roll)
+            Rp = pose(env, LOOSE[i])[0]
+            yaw = math.degrees(math.atan2(Rp[1, 0], Rp[0, 0]))
+            if abs(yaw) > 0.5:
+                yield from r.turn(-yaw, t=0.6, label=f"square pattern {i}: {yaw:+.1f} deg")
+                yield from r.wait(0.3)
         yield from r.servo(goal + np.array([0.0, -0.02, 0.0]), tol=0.0015, timeout=2.0, gain=0.3, read=lambda: gate_end(i), label="gate square to the mark, 2 cm off")
         if mode == "order":
             yield from r.servo(goal + np.array([0.0, GAP_OPEN + LEAN, 0.0]), tol=0.0008, timeout=2.0, gain=0.3, read=lambda: gate_end(i), label="the gate onto the sprue first")
@@ -452,6 +462,9 @@ def demo_script(ctx):
     yield from l.move(rest + c.KNIFE_REST_R @ np.array([c.GRASP_X, 0.0, 0.0]) + np.array([0.0, 0.0, KNIFE_TCP + 0.05]), t=3.0, label="the knife over its rest")
     yield from l.servo(rest + np.array([0.0, 0.0, 0.02]), tol=0.002, timeout=2.0, gain=0.3, read=blade_c, label="the blade over its guard")
     yield from l.servo(lambda tt: rest + np.array([0.0, 0.0, max(0.02 - 0.02 * tt, 0.001)]), tol=0.002, timeout=2.5, gain=0.3, read=blade_c, label="the knife down into its rest")
+    if os.environ.get("WELD_DEBUG"):
+        Rk, pk = knife_pose(env)
+        print(f"[look] knife let down: {np.round((pk - c.KNIFE_REST) * 1000, 1)} mm from its rest, {c.angle_deg(Rk, c.KNIFE_REST_R):.1f} deg", flush=True)
     yield from l.open(t=0.4, label="let go of the knife")
     yield from l.move(l.at() + np.array([0.0, 0.0, 0.08]), t=1.0, label="the left hand up")
     yield from ctx.together(l.move(LEFT_CLEAR + UP, t=2.0, label="left clear"), r.move(RIGHT_CLEAR + UP, t=2.0, label="right clear"))

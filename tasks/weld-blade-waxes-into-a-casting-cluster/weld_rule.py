@@ -72,6 +72,7 @@ class Rule:
     t_prev: float | None = None
     rest_t: float = 0.0
     locks: list = field(default_factory=list)  # loose pattern indices to lock this step: the task file empties it
+    events: list = field(default_factory=list)  # what happened to each joint, for the log: the task file empties it
 
     def reset(self) -> None:
         self.__init__()
@@ -140,16 +141,21 @@ class Rule:
                 gate_on = self.touches_sprue(c.to_world(*pose, GATE_FACE), need=3)
                 if gate_on and j.dose >= D_MIN and o.t - j.off_t <= T_OPEN:
                     j.wet_t, j.set_t, j.anchor = o.t, o.t, pose
+                    self.events.append(f"{i}: closed with {j.dose:.1f} s of heat")
                 elif o.t - j.off_t > T_OPEN:
+                    self.events.append(f"{i}: cold, {T_OPEN:g} s after the blade left without the gate on the sprue")
                     j.dose, j.off_t = 0.0, None  # cold: heat it again
             if j.wet_t is not None and not heating:
                 if self.moved(pose, j.anchor, SET_POS, SET_ANG):
                     if o.t - j.wet_t <= T_ADJUST and self.touches_sprue(c.to_world(*pose, GATE_FACE), need=3):
                         j.set_t, j.anchor = o.t, pose  # still liquid: set square, and the set starts again
                     else:
+                        moved = (np.linalg.norm(np.asarray(pose[1]) - np.asarray(j.anchor[1])) * 1000, c.angle_deg(pose[0], j.anchor[0]))
+                        self.events.append(f"{i}: cracked {o.t - j.set_t:.1f} s into the set, moved {moved[0]:.1f} mm, {moved[1]:.1f} deg")
                         j.dose, j.off_t, j.wet_t, j.set_t, j.anchor = 0.0, None, None, None, None  # cracked while setting
                 elif o.t - j.set_t >= T_SET:
                     j.welded, j.weld_pose = True, pose
+                    self.events.append(f"{i}: welded")
                     self.locks.append(i)
         for k, pose in enumerate(o.neighbours):
             ref = c.NEIGHBOURS[k]
