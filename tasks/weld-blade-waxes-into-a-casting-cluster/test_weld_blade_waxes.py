@@ -348,7 +348,7 @@ def demo_poses():
                   (f"slot {k}: gate on", plat([c.CX, c.FACE_Y + t.LEAN, z])), (f"slot {k}: let go, back", plat([c.CX, c.FACE_Y - 0.03, z]) + [0, 0, 0.04 if k < 2 else 0.0])]
         left += [(f"slot {k}: knife parked", knife_tcp([c.CX - 0.07, c.FACE_Y - 0.0055, z + 0.03])),
                  (f"slot {k}: blade 5 cm out", knife_tcp([c.CX - 0.05, c.FACE_Y - t.GAP_OPEN / 2, z])),
-                 (f"slot {k}: blade in the gap", knife_tcp([c.CX + 0.004, c.FACE_Y - c.BLADE[1] / 2, z]))]
+                 (f"slot {k}: blade in the gap", knife_tcp([c.CX + t.BLADE_IN, c.FACE_Y - c.BLADE[1] / 2, z]))]
     left = [("over the knife", knife_tcp(c.KNIFE_REST) + [0, 0, 0.06]), ("on the knife", knife_tcp(c.KNIFE_REST))] + left + \
            [("knife over its rest", knife_tcp(c.KNIFE_REST) + [0, 0, 0.05]), ("left clear", t.LEFT_CLEAR)]
     right += [("right clear", t.RIGHT_CLEAR)]
@@ -382,7 +382,7 @@ def test_clearance():
     import task as t
     for k, z in enumerate(c.SLOTS_Z):
         R = c.KNIFE_REST_R
-        knife = (R, np.array([c.CX + 0.004, c.FACE_Y - c.BLADE[1] / 2, z]))
+        knife = (R, np.array([c.CX + t.BLADE_IN, c.FACE_Y - c.BLADE[1] / 2, z]))
         hold = gripper_points(np.array([c.CX, c.FACE_Y + c.Y_PLATFORM, z + t.PLAT_TCP]), True, c.PLATFORM[0] / 2)
         kh = gripper_points(knife[1] + R @ np.array([c.GRASP_X, 0.0, 0.0]) + [0.0, 0.0, t.KNIFE_TCP], False, c.HANDLE_R)
         g1 = gap_to(hold, obstacles(knife, welded=k))
@@ -392,6 +392,11 @@ def test_clearance():
               f"to the held pattern {g3 * 1000:.1f} mm")
         check(f"slot {k}: holding hand 10 mm or more from everything but its pattern", g1 >= 0.010, True)
         check(f"slot {k}: knife hand 10 mm or more from everything", min(g2, g3) >= 0.010, True)
+        shank_end = c.to_world(R, knife[1], [[c.BLADE[0] / 2, 0.0, 0.0]])[0]  # where the shank starts, toward -x
+        check(f"slot {k}: the 3 mm shank stays 1 mm or more off the sprue's face (its end {(c.CX - c.SPRUE / 2 - shank_end[0]) * 1000:.1f} mm short)",
+              shank_end[0] <= c.CX - c.SPRUE / 2 - 0.001, True)
+        blade_x = sorted([c.to_world(R, knife[1], [[s_ * c.BLADE[0] / 2, 0, 0]])[0][0] for s_ in (-1, 1)])
+        check(f"slot {k}: the blade covers the gate's middle", blade_x[0] <= c.CX - w.COVER and blade_x[1] >= c.CX + w.COVER, True)
 
 
 TESTS = [test_ladder, test_red_team, test_set_and_dose, test_latches, test_geometry, test_reach, test_clearance, test_text]

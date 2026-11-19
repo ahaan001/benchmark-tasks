@@ -305,6 +305,9 @@ PLAT_TCP = 0.007  # the holding TCP above the platform's centre: the pad tips 6 
 KNIFE_TCP = 0.010  # the knife hand's TCP above the handle's axis
 GAP_OPEN = 0.004  # the gate end's distance off the sprue while the blade goes in
 LEAN = 0.0005  # how far past touching each push aims
+PRESS_CAP = 0.003  # the most a press leans past the shift it needed: a few newtons on the arm's soft wrist
+RELAX = 0.0015  # the holding hand eases off before the blade slides out, so that the blade does not drag the pattern
+BLADE_IN = -0.003  # the blade's centre 3 mm short of the sprue's middle: its 3 mm shank stays off the sprue's face, the blade still covers the gate
 LEFT_CLEAR, RIGHT_CLEAR = np.array([0.20, 0.30, 0.16]), np.array([0.20, -0.22, 0.15])  # where the hands end, clear of everything
 
 
@@ -315,6 +318,7 @@ def demo_script(ctx):
     Failure modes (--mode): none does nothing; hover keeps the blade in the 4 mm gap touching neither face; early lets go of the first pattern 4 s
     after it closes; order presses the gate on first and then tries the knife."""
     import demokit as d
+    from yam_arena import ik
 
     env = ctx.emb._env
     l, r = ctx.left, ctx.right
@@ -363,6 +367,22 @@ def demo_script(ctx):
 
     knife_at = lambda: knife_pose(env)[1] + UP  # noqa: E731
 
+    def press(arm, goal, read, t, label):
+        """Bring a held part's point to `goal` (just past touching), shifting the command by what is seen, but never more than PRESS_CAP past the
+        shift that was needed at the start: once the part touches, the arm leans on it gently instead of winding up."""
+        c0 = ik.tcp_pose(arm.q, arm.base)[0]
+        need = np.asarray(goal, float) - read()
+        span = float(np.linalg.norm(need)) + PRESS_CAP
+        cmd = c0.copy()
+        for _ in range(max(1, round(t * 20))):
+            err = np.asarray(goal, float) - read()
+            cmd = cmd + np.clip(0.3 * err, -d.SERVO_STEP, d.SERVO_STEP)
+            off = cmd - c0
+            if np.linalg.norm(off) > span:
+                cmd = c0 + off * span / np.linalg.norm(off)
+            arm._solve(cmd, arm.grip.rot)
+            yield
+
     def look(label, k, i):
         """Where the blade and the gate are against the sprue's face at mark k, as a camera could see: debug print only."""
         if not os.environ.get("WELD_DEBUG"):
@@ -383,7 +403,7 @@ def demo_script(ctx):
     yield from l.move(park(0) + np.array([-c.GRASP_X, 0.0, KNIFE_TCP]), t=2.5, label="the knife beside the lowest mark")
     for k in range(3):
         i = k
-        ok = yield from take(r, lambda: plat_at(i), PLAT_TCP, c.PLATFORM[0], g90, 15.0, f"take pattern {i}", lambda: gate_end(i))
+        ok = yield from take(r, lambda: plat_at(i), PLAT_TCP, c.PLATFORM[0], g90, 25.0, f"take pattern {i}", lambda: gate_end(i))
         if not ok:
             break
         if mode == "one" and k == 1:
@@ -397,27 +417,26 @@ def demo_script(ctx):
         else:
             yield from r.servo(goal, tol=0.0008, timeout=2.0, gain=0.3, read=lambda: gate_end(i), label="gate 4 mm off the mark")
         look("gate 4 mm off the mark", k, i)
-        # the blade in from -x, level with the gate, mid-gap; then onto the sprue's face
+        # the blade in from -x, level with the gate, mid-gap, its shank kept off the sprue; then onto the sprue's face
         lane = np.array([c.CX - 0.05, c.FACE_Y - GAP_OPEN / 2, c.SLOTS_Z[k]]) + UP
         yield from l.servo(lane, tol=0.0015, timeout=2.5, gain=0.3, read=blade_c, label="blade level with the gap, 5 cm out")
-        yield from l.servo(lambda tt: lane + np.array([min(0.054, 0.025 * tt), 0.0, 0.0]), tol=0.0008, timeout=3.5, gain=0.3, read=blade_c, label="slide the blade into the gap")
+        yield from press(l, lane + [0.05 + BLADE_IN, 0.0, 0.0], blade_c, 3.0, "slide the blade into the gap")
         look("slide the blade into the gap", k, i)
         if mode == "hover":
             yield from l.wait(5.0)
         else:
-            yield from l.servo(np.array([c.CX + 0.004, c.FACE_Y - c.BLADE[1] / 2 + LEAN, c.SLOTS_Z[k]]) + UP, tol=0.0006, timeout=2.0, gain=0.3, read=blade_c,
-                               label="blade onto the sprue")
+            yield from press(l, np.array([c.CX + BLADE_IN, c.FACE_Y - c.BLADE[1] / 2 + LEAN, c.SLOTS_Z[k]]) + UP, blade_c, 1.5, "blade onto the sprue")
             look("blade onto the sprue", k, i)
-            yield from r.servo(np.array([c.CX, c.FACE_Y - c.BLADE[1] + LEAN, c.SLOTS_Z[k]]) + UP, tol=0.0006, timeout=2.0, gain=0.3, read=lambda: gate_end(i),
-                               label="gate onto the blade")
+            yield from press(r, np.array([c.CX, c.FACE_Y - c.BLADE[1] + LEAN, c.SLOTS_Z[k]]) + UP, lambda: gate_end(i), 1.5, "gate onto the blade")
             look("gate onto the blade", k, i)
             yield from l.wait(3.0)
         _report(ctx, env, f"heated {i}: ")
+        yield from r.move(r.at() + [0.0, -RELAX, 0.0], t=0.3, label="ease the gate off the blade")
         s0 = blade_c()
         yield from l.servo(lambda tt: s0 + np.array([-min(0.07, 0.035 * tt), -0.0003, 0.0]), tol=0.002, timeout=2.5, gain=0.3, read=blade_c,
                            label="slide the blade out along the gap")
         look("slide the blade out along the gap", k, i)
-        yield from r.servo(np.array([c.CX, c.FACE_Y + LEAN, c.SLOTS_Z[k]]) + UP, tol=0.0006, timeout=2.0, gain=0.3, read=lambda: gate_end(i), label="gate onto the sprue")
+        yield from press(r, np.array([c.CX, c.FACE_Y + LEAN, c.SLOTS_Z[k]]) + UP, lambda: gate_end(i), 1.5, "gate onto the sprue")
         look("gate onto the sprue", k, i)
         yield from l.move(park(min(k + 1, 2)) + np.array([-c.GRASP_X, 0.0, KNIFE_TCP]), t=1.5, label="the knife up to the next mark")
         if mode == "early" and k == 0:
