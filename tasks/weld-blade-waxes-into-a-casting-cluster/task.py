@@ -256,7 +256,12 @@ class Trial:
 
     def step(self, env):
         o = self.obs(env)
+        was = (self.rule.knock, self.rule.crush, self.rule.pad)
         self.rule.step(o)
+        now = (self.rule.knock, self.rule.crush, self.rule.pad)
+        if now != was:
+            print(f"[weld] t {o.t:5.1f} latched: knock {int(now[0])} crush {int(now[1])} pad {int(now[2])}; openings {np.round(np.array(o.opening) * 1000, 1)} mm; "
+                  f"neighbours off by {[round(float(np.linalg.norm(p - ref[1])) * 1000, 1) for (_, p), ref in zip(o.neighbours, c.NEIGHBOURS)]} mm", flush=True)
         for i in self.rule.locks:
             for link in LINKS:
                 k, e, d = (K_SLIDE, E_SLIDE, D_SLIDE) if link[0] == "s" else (K_HINGE, E_HINGE, D_HINGE)
@@ -331,12 +336,41 @@ def demo_script(ctx):
     grasp_at = lambda: knife_pose(env)[0] @ np.array([c.GRASP_X, 0.0, 0.0]) + knife_pose(env)[1] + UP + np.array([0.0, 0.0, KNIFE_TCP])  # noqa: E731
 
     # the knife: taken once, held level, blade toward +x
-    yield from l.pick(grasp_at, 0.0, width=2 * c.HANDLE_R, grip=g0, above=0.06, lift=0.05, force=20.0, label="take the knife")
+    def take(arm, where, height, width, grip, force, label, part_at):
+        """A pick that checks itself: settle over the part and at it with long servos, close, lift 3 cm, and see that the part came up; else open,
+        back off and try again (twice at most). Returns whether the part is held."""
+        from yam_arena.constants import FINGER_OPEN
+        for attempt in range(3):
+            up = np.array([0.0, 0.0, height])
+            yield from arm.move(where() + up + [0.0, 0.0, 0.06], grip=grip, finger=FINGER_OPEN, t=2.5 if attempt == 0 else 1.5, label=f"{label}: over")
+            yield from arm.servo(where() + up + [0.0, 0.0, 0.06], tol=0.002, timeout=3.0, gain=0.3, label=f"{label}: over")
+            yield from arm.move(where() + up, t=1.2, label=f"{label}: down")
+            yield from arm.servo(lambda tt: where() + up, tol=0.0015, timeout=3.0, gain=0.3, label=f"{label}: down")
+            z0 = float(part_at()[2])
+            yield from arm.close(width, force, label=f"{label}: close")
+            yield from arm.wait(0.3)
+            yield from arm.move(arm.at() + [0.0, 0.0, 0.03], t=1.0, label=f"{label}: lift")
+            yield from arm.wait(0.3)
+            rose = float(part_at()[2]) - z0
+            print(f"[weld] {label}: attempt {attempt + 1}, the part rose {rose * 1000:.0f} mm; hand {np.round((arm.tcp() - where() - up) * 1000, 1)} mm off", flush=True)
+            if rose > 0.02:
+                return True
+            yield from arm.open(t=0.4, label=f"{label}: let go, try again")
+            yield from arm.move(arm.at() + [0.0, 0.0, 0.04], t=0.8, label=f"{label}: up")
+        return False
+
+    knife_at = lambda: knife_pose(env)[1] + UP  # noqa: E731
+    ok = yield from take(l, grasp_at, 0.0, 2 * c.HANDLE_R, g0, 20.0, "take the knife", knife_at)
+    if not ok:
+        return
     park = lambda k: np.array([c.CX - 0.07, c.FACE_Y - 0.0015 - 0.004, c.SLOTS_Z[k] + 0.03]) + UP  # noqa: E731
     yield from l.move(park(0) + np.array([-c.GRASP_X, 0.0, KNIFE_TCP]), t=2.5, label="the knife beside the lowest mark")
     for k in range(3):
         i = k
-        yield from r.pick(lambda: plat_at(i), PLAT_TCP, width=c.PLATFORM[0], grip=g90, above=0.06, lift=0.05, force=15.0, label=f"take pattern {i}")
+        ok = yield from take(r, lambda: plat_at(i), PLAT_TCP, c.PLATFORM[0], g90, 15.0, f"take pattern {i}", lambda: gate_end(i))
+        if not ok:
+            break
+        yield from r.move(r.at() + [0.0, 0.0, 0.02], t=0.6, label=f"pattern {i} up")
         goal = np.array([c.CX, c.FACE_Y - GAP_OPEN, c.SLOTS_Z[k]]) + UP
         yield from r.move(goal + np.array([0.0, -0.04, 0.0]) + (plat_at(i) - gate_end(i)) + np.array([0.0, 0.0, PLAT_TCP]), t=3.0, label=f"pattern {i} 4 cm off its mark")
         yield from r.servo(goal + np.array([0.0, -0.02, 0.0]), tol=0.0015, timeout=2.0, gain=0.3, read=lambda: gate_end(i), label="gate square to the mark, 2 cm off")
