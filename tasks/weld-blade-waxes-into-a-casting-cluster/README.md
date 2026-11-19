@@ -52,7 +52,7 @@ The scene is the same for every seed.
 
 ```bash
 python demokit.py task.py OUT                                          # the full-score run, with video and setup.png
-python demokit.py task.py OUT_checks --mode none,hover,early,order --fast   # failure checks
+python demokit.py task.py OUT_checks --mode none,hover,early,order --fast   # failure checks (one: the first pattern only, for debugging)
 PYTHONPATH=<yam-isaac-lab-arena> python3 test_weld_blade_waxes.py      # offline tests, no simulator
 ```
 
@@ -63,7 +63,10 @@ scorer. The left hand takes the knife by its handle and keeps it level, blade to
 2. The left hand slides the blade into that gap from -x and lays it on the sprue's face. The right hand brings the gate onto the blade, and both hold for 3 s.
 3. The blade slides out along the gap. The right hand presses the gate onto the sprue and holds still for 11 s, then lets go and backs away.
 
-Last, the knife goes back in its rest and both hands move clear. A full run takes about 2,200 control steps (110 s); the run limit is 4,800.
+Last, the knife goes back in its rest and both hands move clear. A full run takes about 2,800 control steps (140 s); the run limit is 4,800.
+
+Two details keep the demo honest on the real arm: every push is capped at 3 mm past where it needed to go (the arm leans, it does not wind up), and the
+holding hand corrects its own slow sag while the wax sets. `WELD_DEBUG=1` prints where the blade and the gate are against the sprue at each stage.
 
 ## Scoring
 
@@ -148,8 +151,15 @@ are taped, and the operator resets with heat gloves after the knife has cooled i
 
 ## Runtime and seeds
 
-`object_jitter=0`; the demo is deterministic. A full demo is about 2,200 control steps (110 s of simulated time). Simulator wall time: measured at the
-first run.
+`object_jitter=0`; the demo is deterministic. Measured on an L40S:
+
+| Run | Steps | Simulated | Wall time | Score |
+|---|---|---|---|---|
+| Scripted demo, cameras at 640 x 360 | 2,794 | 140 s | 9.8 min | 1.0 |
+| Scripted demo, `--fast` (CPU, no cameras) | 2,796 | 140 s | 2 min | 1.0 |
+| Dream-1, 320 x 176 | 4,800 (limit) | 240 s | 27 min | 0.0 |
+
+Failure checks (`--fast`): none 0.0; hover 0.0 (each joint goes cold); order 0.0; early 0.5 (the pattern let go at 4 s falls).
 
 ## Credits
 

@@ -16,5 +16,5 @@
   "run_limit": "4,800 steps (4 minutes at 20 Hz)",
   "reset_notes": "Per trial three new patterns (about 51 g of pattern wax), poured ahead of time in the RTV silicone mould made from the printable master in assets/, about 10 minutes each. Cut the three new welds off the sprue with the warm knife and scrape the face flat at the marks (about 2 minutes); the cluster and its three welded patterns are reused. Let the knife cool in its rest before resetting.",
   "fidelity": "Rigid wax parts; each loose pattern hangs on six free joints, so it moves as a free body and falls if let go. Melting is a declared rule: a joint heats only while the blade touches the gate end and the sprue at once, over the gate's middle, for 2 to 8 s (past 8 s the gate melts back 3 mm); the gate must touch the sprue within 4 s, may be set square in the first 2 s, then stay within 1 mm and 2 degrees for 10 s; then its joints lock. Times are estimates. No drips or fillet.",
-  "scores": "Dream-1 run: pending; demo: pending"
+  "scores": "Dream-1 run: 0.0 (ran all 4,800 steps, no refusal; it never lifted a pattern); demo: 1.0 (scripted, 2,794 steps)"
 }
