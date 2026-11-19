@@ -319,7 +319,7 @@ def demo_script(ctx):
     env = ctx.emb._env
     l, r = ctx.left, ctx.right
     mode = ctx.mode
-    if mode not in ("full", "none", "hover", "early", "order"):
+    if mode not in ("full", "none", "hover", "early", "order", "one"):
         raise ValueError(mode)
     for _ in range(10):
         yield
@@ -362,6 +362,20 @@ def demo_script(ctx):
         return False
 
     knife_at = lambda: knife_pose(env)[1] + UP  # noqa: E731
+
+    def look(label, k, i):
+        """Where the blade and the gate are against the sprue's face at mark k, as a camera could see: debug print only."""
+        if not os.environ.get("WELD_DEBUG"):
+            return
+        Rk, pk = knife_pose(env)
+        Rp, pp = pose(env, LOOSE[i])
+        tilt = np.degrees(np.arccos(np.clip(np.diag(c.KNIFE_REST_R.T @ Rk), -1, 1)))
+        blade = c.to_world(Rk, pk, c.BLADE_PTS)
+        dg = c.box_distance(c.to_local(Rp, pp, blade), *c.BOXES[0][1:])[0].min()
+        ds = c.box_distance(blade, w.SPRUE_C, w.SPRUE_H, np.eye(3))[0].min()
+        print(f"[look] {label}: blade centre {np.round((pk - [c.CX, c.FACE_Y, c.SLOTS_Z[k]]) * 1000, 1)} mm, knife axes off {np.round(tilt, 1)} deg; "
+              f"gate end {np.round((pp - [c.CX, c.FACE_Y, c.SLOTS_Z[k]]) * 1000, 1)} mm, {c.angle_deg(Rp, np.eye(3)):.1f} deg; blade to gate {dg * 1000:.2f} mm, "
+              f"to sprue {ds * 1000:.2f} mm", flush=True)
     ok = yield from take(l, grasp_at, 0.0, 2 * c.HANDLE_R, g0, 20.0, "take the knife", knife_at)
     if not ok:
         return
@@ -372,6 +386,8 @@ def demo_script(ctx):
         ok = yield from take(r, lambda: plat_at(i), PLAT_TCP, c.PLATFORM[0], g90, 15.0, f"take pattern {i}", lambda: gate_end(i))
         if not ok:
             break
+        if mode == "one" and k == 1:
+            break
         yield from r.move(r.at() + [0.0, 0.0, 0.02], t=0.6, label=f"pattern {i} up")
         goal = np.array([c.CX, c.FACE_Y - GAP_OPEN, c.SLOTS_Z[k]]) + UP
         yield from r.move(goal + np.array([0.0, -0.04, 0.0]) + (plat_at(i) - gate_end(i)) + np.array([0.0, 0.0, PLAT_TCP]), t=3.0, label=f"pattern {i} 4 cm off its mark")
@@ -380,23 +396,29 @@ def demo_script(ctx):
             yield from r.servo(goal + np.array([0.0, GAP_OPEN + LEAN, 0.0]), tol=0.0008, timeout=2.0, gain=0.3, read=lambda: gate_end(i), label="the gate onto the sprue first")
         else:
             yield from r.servo(goal, tol=0.0008, timeout=2.0, gain=0.3, read=lambda: gate_end(i), label="gate 4 mm off the mark")
+        look("gate 4 mm off the mark", k, i)
         # the blade in from -x, level with the gate, mid-gap; then onto the sprue's face
         lane = np.array([c.CX - 0.05, c.FACE_Y - GAP_OPEN / 2, c.SLOTS_Z[k]]) + UP
         yield from l.servo(lane, tol=0.0015, timeout=2.5, gain=0.3, read=blade_c, label="blade level with the gap, 5 cm out")
         yield from l.servo(lambda tt: lane + np.array([min(0.054, 0.025 * tt), 0.0, 0.0]), tol=0.0008, timeout=3.5, gain=0.3, read=blade_c, label="slide the blade into the gap")
+        look("slide the blade into the gap", k, i)
         if mode == "hover":
             yield from l.wait(5.0)
         else:
             yield from l.servo(np.array([c.CX + 0.004, c.FACE_Y - c.BLADE[1] / 2 + LEAN, c.SLOTS_Z[k]]) + UP, tol=0.0006, timeout=2.0, gain=0.3, read=blade_c,
                                label="blade onto the sprue")
+            look("blade onto the sprue", k, i)
             yield from r.servo(np.array([c.CX, c.FACE_Y - c.BLADE[1] + LEAN, c.SLOTS_Z[k]]) + UP, tol=0.0006, timeout=2.0, gain=0.3, read=lambda: gate_end(i),
                                label="gate onto the blade")
+            look("gate onto the blade", k, i)
             yield from l.wait(3.0)
         _report(ctx, env, f"heated {i}: ")
         s0 = blade_c()
         yield from l.servo(lambda tt: s0 + np.array([-min(0.07, 0.035 * tt), -0.0003, 0.0]), tol=0.002, timeout=2.5, gain=0.3, read=blade_c,
                            label="slide the blade out along the gap")
+        look("slide the blade out along the gap", k, i)
         yield from r.servo(np.array([c.CX, c.FACE_Y + LEAN, c.SLOTS_Z[k]]) + UP, tol=0.0006, timeout=2.0, gain=0.3, read=lambda: gate_end(i), label="gate onto the sprue")
+        look("gate onto the sprue", k, i)
         yield from l.move(park(min(k + 1, 2)) + np.array([-c.GRASP_X, 0.0, KNIFE_TCP]), t=1.5, label="the knife up to the next mark")
         if mode == "early" and k == 0:
             yield from r.wait(4.0)
