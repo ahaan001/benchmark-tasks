@@ -342,7 +342,8 @@ def demo_script(ctx):
         from yam_arena.constants import FINGER_OPEN
         for attempt in range(3):
             up = np.array([0.0, 0.0, height])
-            yield from arm.move(where() + up + [0.0, 0.0, 0.06], grip=grip, finger=FINGER_OPEN, t=2.5 if attempt == 0 else 1.5, label=f"{label}: over")
+            ajar = -min(width / 2 + 0.008, -FINGER_OPEN)  # opened 8 mm a side wider than the part: fully open, a finger reaches the next pattern in the tray
+            yield from arm.move(where() + up + [0.0, 0.0, 0.06], grip=grip, finger=ajar, t=2.5 if attempt == 0 else 1.5, label=f"{label}: over")
             yield from arm.servo(where() + up + [0.0, 0.0, 0.06], tol=0.002, timeout=3.0, gain=0.3, label=f"{label}: over")
             yield from arm.move(where() + up, t=1.2, label=f"{label}: down")
             yield from arm.servo(lambda tt: where() + up, tol=0.0015, timeout=3.0, gain=0.3, label=f"{label}: down")
@@ -355,7 +356,8 @@ def demo_script(ctx):
             print(f"[weld] {label}: attempt {attempt + 1}, the part rose {rose * 1000:.0f} mm; hand {np.round((arm.tcp() - where() - up) * 1000, 1)} mm off", flush=True)
             if rose > 0.02:
                 return True
-            yield from arm.open(t=0.4, label=f"{label}: let go, try again")
+            yield from arm.move(arm.at(), finger=ajar, t=0.4, label=f"{label}: let go, try again")
+            arm.trim = np.zeros(3)
             yield from arm.move(arm.at() + [0.0, 0.0, 0.04], t=0.8, label=f"{label}: up")
         return False
 
