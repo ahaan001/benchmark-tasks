@@ -74,7 +74,7 @@ Read at the end; the trial video is used for the at-any-time rules.
 - **0.25 per loose pattern** that at the end hangs from the sprue by its own weld, with no finger within 1 cm of it, its gate centred within 3 mm of an
   empty mark (one pattern per mark) and square to the sprue's face within 3 degrees. **Minus 0.10** if its gate melted back.
 - **Minus 0.10** for each pattern, loose or already welded, whose airfoil, platform or root the blade touched.
-- Only once a pattern scores: **0.15** for the knife lying back in its rest (within 2 cm and 10 degrees), and **0.10** for every finger point 3 cm or more
+- Only once a pattern scores: **0.15** for the knife lying back in its rest (within 2 cm, its axis within 10 degrees; a roll about its round handle does not count), and **0.10** for every finger point 3 cm or more
   from the knife, every pattern and the sprue, held 1 s.
 - `success()` is the full 1.0, held 1 s. Doing nothing scores 0.
 

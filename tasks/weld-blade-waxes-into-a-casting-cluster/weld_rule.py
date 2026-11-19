@@ -209,7 +209,8 @@ class Rule:
 
     def knife_home(self, o: Obs) -> bool:
         R, p = o.knife
-        return float(np.linalg.norm(np.asarray(p) - c.KNIFE_REST)) <= KNIFE_HOME_POS and c.angle_deg(R, c.KNIFE_REST_R) <= KNIFE_HOME_ANG
+        along = float(np.clip(np.asarray(R)[:, 0] @ c.KNIFE_REST_R[:, 0], -1.0, 1.0))  # its axis as it lay; a roll about its own round handle is still in the rest
+        return float(np.linalg.norm(np.asarray(p) - c.KNIFE_REST)) <= KNIFE_HOME_POS and np.degrees(np.arccos(along)) <= KNIFE_HOME_ANG
 
     def parts(self, o: Obs) -> dict:
         out = {"patterns": [], "marks": 0, "knife_home": self.knife_home(o), "clear": self.rest_t >= REST_S}

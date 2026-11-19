@@ -370,7 +370,12 @@ def demo_script(ctx):
 
     knife_at = lambda: knife_pose(env)[1] + UP  # noqa: E731
 
-    def press(arm, goal, read, t, label):
+    def steady(arm, read, t, label):
+        """Hold a held part's point where it is now for `t` seconds, correcting the slow sag of the arm a little each step, as a hand keeps still."""
+        goal = np.asarray(read(), float)
+        yield from press(arm, goal, read, t, label, gain=0.15)
+
+    def press(arm, goal, read, t, label, gain=0.3):
         """Bring a held part's point to `goal` (just past touching), shifting the command by what is seen, but never more than PRESS_CAP past the
         shift that was needed at the start: once the part touches, the arm leans on it gently instead of winding up."""
         c0 = ik.tcp_pose(arm.q, arm.base)[0]
@@ -379,7 +384,7 @@ def demo_script(ctx):
         cmd = c0.copy()
         for _ in range(max(1, round(t * 20))):
             err = np.asarray(goal, float) - read()
-            cmd = cmd + np.clip(0.3 * err, -d.SERVO_STEP, d.SERVO_STEP)
+            cmd = cmd + np.clip(gain * err, -d.SERVO_STEP, d.SERVO_STEP)
             off = cmd - c0
             if np.linalg.norm(off) > span:
                 cmd = c0 + off * span / np.linalg.norm(off)
@@ -449,9 +454,9 @@ def demo_script(ctx):
         look("gate onto the sprue", k, i)
         yield from l.move(park(min(k + 1, 2)) + np.array([-c.GRASP_X, 0.0, KNIFE_TCP]), t=1.5, label="the knife up to the next mark")
         if mode == "early" and k == 0:
-            yield from r.wait(4.0)
+            yield from steady(r, lambda: gate_end(i), 4.0, "held still, let go too early")
         else:
-            yield from r.wait(11.0)  # held still while the wax sets
+            yield from steady(r, lambda: gate_end(i), 11.0, "held still while the wax sets")
         _report(ctx, env, f"held {i}: ")
         yield from r.open(t=0.4, label="let go")
         yield from r.move(r.at() + np.array([0.0, -0.03, 0.0]), t=0.8, label="the fingers back off the platform")
