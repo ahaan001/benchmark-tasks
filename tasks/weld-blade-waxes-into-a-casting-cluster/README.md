@@ -89,7 +89,8 @@ The simulator cannot melt wax, so melting and setting are bookkeeping on real co
    blade covers the middle of the gate's face. Each control step adds 0.05 s.
 2. **Close.** Within 4 s of the blade leaving, the gate's end face (three of five points) must be on the sprue, with 2 s of heat or more. Otherwise the
    joint is cold and must be heated again.
-3. **Set.** The pattern must stay within 1 mm and 2 degrees of where it closed for 10 s. Leaving that band cracks the joint (cold again). Letting go needs
+3. **Set.** In the first 2 s after the faces meet the wax is still liquid: the pattern may be set square there, and the set starts again. It must then stay
+   within 1 mm and 2 degrees for 10 s. Leaving that band cracks the joint (cold again). Letting go needs
    no rule: each loose pattern hangs on six free joints (three slides, three hinges) from a hidden anchor, so it falls when released.
 4. **Lock.** After the set, the six joints get a spring at their present positions (3,000 N/m and 20 N m/rad, with effort limits of 1.5 N and 0.1 N m):
    the pattern is welded. The three patterns already on the cluster are built the same way and start set, so a knock past those limits moves them.

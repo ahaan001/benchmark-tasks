@@ -433,10 +433,9 @@ def demo_script(ctx):
         _report(ctx, env, f"heated {i}: ")
         yield from r.move(r.at() + [0.0, -RELAX, 0.0], t=0.3, label="ease the gate off the blade")
         s0 = blade_c()
-        yield from l.servo(lambda tt: s0 + np.array([-min(0.07, 0.035 * tt), -0.0003, 0.0]), tol=0.002, timeout=2.5, gain=0.3, read=blade_c,
-                           label="slide the blade out along the gap")
-        look("slide the blade out along the gap", k, i)
-        yield from press(r, np.array([c.CX, c.FACE_Y + LEAN, c.SLOTS_Z[k]]) + UP, lambda: gate_end(i), 1.5, "gate onto the sprue")
+        yield from ctx.together(l.servo(lambda tt: s0 + np.array([-min(0.07, 0.035 * tt), -0.0003, 0.0]), tol=0.002, timeout=2.5, gain=0.3, read=blade_c,
+                                        label="slide the blade out along the gap"),
+                                press(r, np.array([c.CX, c.FACE_Y + LEAN, c.SLOTS_Z[k]]) + UP, lambda: gate_end(i), 2.5, "gate onto the sprue as the blade leaves"))
         look("gate onto the sprue", k, i)
         yield from l.move(park(min(k + 1, 2)) + np.array([-c.GRASP_X, 0.0, KNIFE_TCP]), t=1.5, label="the knife up to the next mark")
         if mode == "early" and k == 0:

@@ -1,8 +1,8 @@
 """The declared wax-weld rule and the scorer's memory. NumPy only: the task file feeds it poses each control step, and the tests feed it traces.
 
 A joint heats only while the knife's blade touches the pattern's gate end face and the sprue at once, with the blade over the middle of the gate's face.
-After the blade leaves, the gate must come onto the sprue within T_OPEN with enough heat; it must then stay within SET_POS and SET_ANG of where it
-closed for T_SET, and is then welded (the task file locks its joints). Leaving the band, or waiting too long, makes the joint cold: heat it again.
+After the blade leaves, the gate must come onto the sprue within T_OPEN with enough heat; in the first T_ADJUST it may be set square (the set starts
+again), and it must then stay within SET_POS and SET_ANG for T_SET, and is then welded (the task file locks its joints). Leaving the band, or waiting too long, makes the joint cold: heat it again.
 Past D_MAX the gate end melts back. Nothing here moves, holds or lets go of a part.
 """
 
@@ -17,6 +17,7 @@ import cluster as c
 D_MIN, D_MAX = 2.0, 8.0  # s of blade contact on both faces (E)
 T_OPEN = 4.0  # s from the blade leaving to the gate on the sprue (E)
 T_SET = 10.0  # s held still for the wax to set (E)
+T_ADJUST = 2.0  # s after the faces meet while the wax is still liquid: the pattern may be set square, and the set starts again (E)
 SET_POS, SET_ANG = 0.001, 2.0  # m, deg
 CONTACT = 0.0005  # m: a blade point this close to a face touches it
 COVER = 0.002  # m: the blade must cover the gate face's centre by this much
@@ -53,6 +54,7 @@ class Joint:
     dose: float = 0.0
     off_t: float | None = None  # when the blade last left a hot joint
     wet_t: float | None = None
+    set_t: float | None = None  # when the pattern was last put where it now sets
     anchor: tuple | None = None
     welded: bool = False
     weld_pose: tuple | None = None
@@ -137,13 +139,16 @@ class Rule:
                 j.off_t = o.t if j.off_t is None else j.off_t
                 gate_on = self.touches_sprue(c.to_world(*pose, GATE_FACE), need=3)
                 if gate_on and j.dose >= D_MIN and o.t - j.off_t <= T_OPEN:
-                    j.wet_t, j.anchor = o.t, pose
+                    j.wet_t, j.set_t, j.anchor = o.t, o.t, pose
                 elif o.t - j.off_t > T_OPEN:
                     j.dose, j.off_t = 0.0, None  # cold: heat it again
             if j.wet_t is not None and not heating:
                 if self.moved(pose, j.anchor, SET_POS, SET_ANG):
-                    j.dose, j.off_t, j.wet_t, j.anchor = 0.0, None, None, None  # cracked while setting
-                elif o.t - j.wet_t >= T_SET:
+                    if o.t - j.wet_t <= T_ADJUST and self.touches_sprue(c.to_world(*pose, GATE_FACE), need=3):
+                        j.set_t, j.anchor = o.t, pose  # still liquid: set square, and the set starts again
+                    else:
+                        j.dose, j.off_t, j.wet_t, j.set_t, j.anchor = 0.0, None, None, None, None  # cracked while setting
+                elif o.t - j.set_t >= T_SET:
                     j.welded, j.weld_pose = True, pose
                     self.locks.append(i)
         for k, pose in enumerate(o.neighbours):

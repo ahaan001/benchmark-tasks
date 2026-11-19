@@ -177,6 +177,18 @@ def test_set_and_dose():
     tr.run(3.0)
     check("moved 3 mm at 9 s: cracked, cold", (tr.rule.joints[0].welded, tr.rule.joints[0].dose), (False, 0.0))
     tr = Trace()
+    tr.weld(0, 0, hold=1.0, release=False)
+    R, p = tr.loose[0]
+    tr.loose[0] = (R, p + np.array([0.002, 0.0, 0.0]))  # slid 2 mm along the face 1.5 s after it met: still liquid
+    tr.run(11.0)
+    check("set square 2 mm in the first 2 s: still welds", tr.rule.joints[0].welded, True)
+    tr = Trace()
+    tr.weld(0, 0, hold=3.0, release=False)
+    R, p = tr.loose[0]
+    tr.loose[0] = (R, p + np.array([0.002, 0.0, 0.0]))  # the same 3.5 s after: cracked
+    tr.run(11.0)
+    check("moved 2 mm 3.5 s after it met: cracked", tr.rule.joints[0].welded, False)
+    tr = Trace()
     tr.weld(0, 0, dose=9.0)
     tr.run(2.0, knife=KNIFE_HOME, tips=AWAY.copy())
     check("dose 9 s: welded but the gate melted back", tr.score(), 0.25 - 0.10 + 0.25)
@@ -285,7 +297,7 @@ def test_text():
         if isinstance(v, str):
             check(f"{k}: no em or en dash", chr(0x2014) in v or chr(0x2013) in v, False)
     for label, text, phrase in (("dose window", d["fidelity"], f"{w.D_MIN:g} to {w.D_MAX:g} s"), ("open time", d["fidelity"], f"within {w.T_OPEN:g} s"),
-                                ("set band", d["fidelity"], f"{w.SET_POS * 1000:g} mm and {w.SET_ANG:g} degrees for {w.T_SET:g} s"),
+                                ("set band", d["fidelity"], f"{w.SET_POS * 1000:g} mm and {w.SET_ANG:g} degrees for {w.T_SET:g} s"), ("adjust", d["fidelity"], f"first {w.T_ADJUST:g} s"),
                                 ("knock", d["scoring"], f"{w.KNOCK_POS * 1000:g} mm or {w.KNOCK_ANG:g} degrees"), ("crush", d["scoring"], f"{w.CRUSH * 1000:g} mm or more"),
                                 ("mark", d["scoring"], f"within {w.MARK_TOL * 1000:g} mm"), ("square", d["scoring"], f"within {w.SQUARE_TOL:g} degrees"),
                                 ("held", d["scoring"], f"within {w.HELD * 100:g} cm"), ("clear", d["scoring"], f"{w.CLEAR * 100:g} cm or more"),
