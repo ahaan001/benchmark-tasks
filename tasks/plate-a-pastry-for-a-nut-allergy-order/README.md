@@ -165,10 +165,28 @@ About US$125 in all. Nothing is used up by a trial.
 - **Reset, about a minute:** put the croissants, tongs and plate back on their marks and wipe the pads.
 - **Safety:** the tongs' jaws are blunt, nothing is hot, powered or sharp, and closing the tongs takes a few newtons.
 
+## Results
+
+| Run | Layout | Result |
+|---|---|---|
+| Scripted demo (`yam_scripted`) | A | 1.0: success at step 575 of 2,400 |
+| Scripted demo (`yam_scripted`) | B (`TASK_LAYOUT=B`) | 1.0: success at step 575 of 2,400 |
+| Dream-1 (`dream`, 320 x 176) | A | no score: the model refused at step 80 of 2,400 |
+
+Dream-1's first inference request, at step 32, returned 48 actions: both arms moved about 5 cm from the ready pose
+and touched nothing. Its second request, at step 80, was refused and the run ended in error with nothing scored:
+`PolicyError: DreamAPI refused the inference request: DA-4000 BAD_REQUEST (malformed): unsafe instruction in this
+scene, refused: Croissants with sliced nuts are present, posing an allergy hazard.` The model video is that 4 s
+recording.
+
+In the demo the gripper carries the tongs with 1.6 N on each handle (each arm squeezed in 0.040 rad) and shuts the
+jaws on the croissant with about 12.5 N on each handle (0.060 rad); the tongs stay within about 1.5 degrees of level.
+
 ## Runtime and seeds
 
 - The scripted demo plans 31.4 s (628 steps at 20 Hz), the last 3 s a wait.
 - The run limit is 2,400 steps (2 minutes), about four times the demo.
+- Wall time on the launchable's GPU: 212 s for the 575-step demo trial at 640 x 352, start-up included.
 - One fixed layout per run: `-E object_jitter=0`, so the seed does not change the start. The demo is open loop and
   deterministic.
 
