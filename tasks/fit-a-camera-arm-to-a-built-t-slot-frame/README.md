@@ -8,8 +8,10 @@ The robot lifts the bracket by its arm, lowers the foot onto the bar marked with
 8.13 mm opening of the slot, out of sight under the foot, keeps the foot flat on the bar, and turns both screws with the driver. As a
 screw starts to turn, its nut swings a quarter turn under the slot's lips and is then drawn up tight.
 
-**Status:** offline tests pass (21 of 21). Simulator runs (the three mechanism tests, the scripted demo, Dream-1) are not yet done; this
-line, the numbers under *Runtime* and the `scores` field are filled in from those runs.
+**Status:** the scripted demo scores 1.0 in the simulator (2,217 of 3,600 control steps); Dream-1 scores 0.0 (one trial of 3,600 steps: it took
+the driver out of its block and laid it on the table, and the bracket never left its blocks). Offline tests pass
+(21 of 21). All simulator runs here use CPU physics (`device=cpu`): the task turns on contacts a few tenths of a millimetre wide, and
+those were built and checked on the CPU solver only.
 
 ## Why this is hard
 
@@ -45,11 +47,11 @@ line, the numbers under *Runtime* and the `scores` field are filled in from thos
 Environment: yam_arena (Isaac Lab-Arena, Isaac Sim, PhysX at 240 Hz), 20 Hz control, object jitter off: one fixed layout, no seeds.
 
     INSTR=$(python3 -c "import json; print(json.load(open('task.json'))['instruction'])")
-    inspect-robots run --embodiment yam_arena --policy dream -E task=task.py -E object_jitter=0 -E control_hz=20 \
+    inspect-robots run --embodiment yam_arena --policy dream -E task=task.py -E device=cpu -E object_jitter=0 -E control_hz=20 \
         -E cam_width=320 -E cam_height=176 --instruction "$INSTR" --scorer task_score --max-steps 3600 --store-frames --log-dir runs/dream
 
-    python demokit.py task.py runs/demo --mode full                          # the scripted demo, recorded: demo.mp4, setup.png, result.json
-    python demokit.py task.py runs/check --no-record --mode full,none,held,unheld,one_screw,off_line   # every end state in one session
+    python demokit.py task.py runs/demo --device cpu --mode full             # the scripted demo, recorded: demo.mp4, setup.png, result.json
+    python demokit.py task.py runs/check --fast --mode full,none,held,unheld,one_screw,off_line   # every end state in one session, no cameras
     PYTHONPATH=<yam-isaac-lab-arena> python3 test_task.py                    # offline tests, no simulator (about 1.5 minutes)
 
 `task_score` gives 1.0 when the episode ends in success, otherwise `score()` at the last step.
@@ -78,7 +80,7 @@ goes under no corner); one that does not lets the camera end drop to the table. 
 same way. Screws are left snug in this task; the final torque (6 N m for an M6 hammer nut in the maker item's data) is applied later
 with a torque key and is not part of it.
 
-What the scripted demo's other modes are expected to score (kinematic stand-in; to be confirmed in the simulator):
+What the scripted demo's modes score. `full` is measured in the simulator; the others are from the kinematic stand-in:
 
 | mode | what it does | score |
 | --- | --- | --- |
@@ -134,27 +136,47 @@ tight on a loose bracket; hanging too low, it would spin with its screw; on top 
 
 ### Mechanism tests (200 control steps or fewer each)
 
-| test | start | what it shows |
+Each is one command, `TSLOT_START=<start> python demokit.py task.py OUT --fast --max-steps 200 --mode <mode>`:
+
+| start, mode | what is set up | what it showed in the simulator |
 | --- | --- | --- |
-| `TSLOT_START=mounted python demokit.py task.py OUT --fast --mode drive` | bracket on the bar, nuts in the slot, arm propped level | the hex blade goes into a socket and turns the screw; the nut swings with it, stops at a quarter turn on the lips of the opening, and starts up the screw |
-| `TSLOT_START=askew python demokit.py task.py OUT --fast --mode settle` | bracket let go 3 mm above the bar, one nut turned 20 degrees | a nut that is off the slot's line lands on the lips and stays out |
-| `python demokit.py task.py OUT --fast --mode take` | as the setup says | the grip on the arm, the lift, and how far the arm gives under 168 g |
+| `mounted`, `drive` | bracket on the bar, nuts in the slot, arm propped level | the hex blade goes into a socket and turns the screw by contact; the nut goes round with the screw, stops on the lips of the opening within 2 degrees of a quarter turn and starts up the screw |
+| `askew`, `settle` | bracket let go 3 mm above the bar, one nut turned 20 degrees | a nut that is off the slot's line lands on the lips and stays out: the foot stands 9.6 mm up |
+| (none), `take` | as the setup says | the grip on the arm, the lift, and how far the arm gives under 168 g (about 5 mm) |
+| `onlips`, `seat` | bracket standing on its nuts on a lip, 4 mm off the slot, arm propped level | the hand tips the bracket, squares it to the bar within 0.1 degrees and hooks both nuts' edges into the opening |
+
+`TSLOT_START=swung` (nut a already swung under the lips) and the mode `back` (the driver out of its block and in again) are there for the
+same kind of test and have only been run in the stand-in.
 
 ## The scripted demo
 
-Closed loop on what a policy could observe: the bracket's pose, the screws' angles, the driver's pose, the arms' own joints.
+Closed loop on what a policy could see or feel: the bracket's pose, the screws' angles, the driver's pose and the arms' own joints. It
+also reads how far each thread is wound past its nut, which a person feels as the screw going tight, to know when to stop turning.
 
-The left hand takes the arm 118 mm from the foot's centre, close to the centre of mass, leaning 30 degrees back along the arm so that
-its wrist stands clear of the other hand later. It lifts the bracket off its blocks, carries it a quarter turn round to the marked bar,
-squares the foot to the bar and brings its middle over the slot, then lowers it. If the foot stays up, the nuts are on the lips: the hand
-lifts a little, steps a fraction of a millimetre across the slot and lowers again, further each time, until the foot is down. It slides
-the notch onto the line and holds. The right hand takes the driver by its neck, lifts it out of the block, turns its hex to the socket's,
-sets the blade in and turns clockwise through as much of the wrist's window as there is (133 to 193 degrees), lifts out, turns back in
-the air and goes in again, until the thread is wound half a turn past where the nut met the lips: three strokes a screw. It stands the
-driver back in its block; the left hand lets go last and both arms move clear.
+The simulated arm follows a small command late: it stays put until the command is 2 to 3 mm ahead, then jumps, and its wrist does the
+same over a third of a degree. No command here is therefore wound more than a few millimetres or a degree ahead of what it moves, and
+every fit is closed by what is seen, a little a step, or by a contact, never by an aimed move.
 
-Offline, against the stand-in: success at step 1,614 of 3,600; IK errors under 0.2 mm; no arm link within 4 mm of anything it is not
-holding, and the two arms never within 12 mm of each other. Those figures are for the stand-in, not the simulator.
+**The bracket.** The left hand takes the arm 118 mm from the foot's centre, close to the centre of mass, leaning 30 degrees back along
+the arm so that its wrist stands clear of the other hand later. It lifts the bracket off its blocks and carries it a quarter turn round
+to over the marked bar. There it tips the camera end up 9 degrees, so that the nuts' outer lower edges lead; turns the foot until it
+lies along the bar within 0.12 degrees and level along it (two nuts 60 mm apart leave the foot half a degree in the opening); brings
+those edges over the opening, where an edge has 8 mm to land in; and lets them down half a millimetre into it. It draws the foot
+outward until both nuts are clear of the inner lip, or the outer lip stops them, lets them a millimetre further down, and then brings
+the foot level, turning about the nuts' own undersides and only while both nuts stay down in the opening. Level, the nuts go down
+between the lips and the foot lands flat. A try that ends with a nut on a lip is lifted off and begun again; the recorded run needed
+one try, and its blade went into a socket at the first setting all six times. The hand then holds the arm until the driver is back in its block.
+
+**The screws.** The right hand takes the driver by its neck and lifts it out of the block. For every stroke it brings the blade's tip
+to 2 mm above the screw's head, turns the hex to the socket's within 0.7 degrees, steers the tip over the socket's axis within 0.4 mm,
+and puts its command where the arm is, so that nothing creeps on. It lowers the blade, still steering, into the socket (a blade that
+lands on the head beside the socket is lifted 4 mm and set again), turns clockwise through as much of the wrist's window as there is
+(133 to 193 degrees), lifts out, and turns back in the air. The first stroke swings the nut under the lips, the second draws it up to
+them, the third winds the thread half a turn past that: three strokes a screw. It stands the driver back in its block; the left hand
+lets go last and both arms move clear.
+
+Simulator, CPU physics: 1.0 at step 2,217 of 3,600 with cameras, and at step 2,740 without. Offline, against the stand-in: 1.0 at step
+1,846; IK errors under 0.2 mm; no arm link within 4 mm of anything it is not holding, and the two arms never within 12 mm of each other.
 
 ## Real-trial kit
 
@@ -188,7 +210,9 @@ About $120 without the camera. Nothing is consumed in a trial. Reset takes about
 
 ## Runtime
 
-Not yet measured in the simulator. Offline: the demo needs about 1,650 control steps (83 s of simulated time) of the 3,600 allowed.
+The scripted demo needs 2,217 control steps (111 s of simulated time) of the 3,600 allowed. On an RTX-class GPU with CPU physics it runs at
+about 30 steps a second without cameras (`--fast`: under 2 minutes) and 10 with them (about 5 minutes). A Dream-1 trial of 3,600 steps
+takes about 6 minutes.
 
 ## Credits
 
