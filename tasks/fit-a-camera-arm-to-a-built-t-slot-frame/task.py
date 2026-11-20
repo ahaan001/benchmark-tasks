@@ -388,7 +388,7 @@ def demo_script(ctx):
     threads = [r.Thread(), r.Thread()]  # the demo's own count of how far each thread is wound, from the joints it can see
     lags = [0.0, 0.0]
     hold_grip = d.tilted(HOLD_TILT, g.MOUNT_YAW - 90.0)
-    pace = {"take": 0.6, "drive": 0.45, "seat": 0.5}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
+    pace = {"take": 0.6, "drive": 0.45, "seat": 0.4}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
     T = lambda seconds: seconds * pace  # noqa: E731
     line_x = g.LINE_X + (0.004 if mode == "off_line" else 0.0)
 
@@ -427,9 +427,9 @@ def demo_script(ctx):
         spot = point(g.GRIP_POINT) - a * PAD_MID  # read once: a servo's goal must stand still
         back = spot - 0.07 * a
         yield from left.move(back, grip=take_grip, finger=-(g.ARM_W / 2 + 0.012), t=T(2.5), label="over the bracket's arm")
-        yield from left.servo(back, tol=0.003, timeout=1.5, label="over the bracket's arm")
+        yield from left.servo(back, tol=0.003, timeout=T(1.5), label="over the bracket's arm")
         yield from left.move(spot, t=T(1.5), label="down round the arm")
-        yield from left.servo(spot, tol=0.0015, timeout=1.5, label="down round the arm")
+        yield from left.servo(spot, tol=0.0015, timeout=T(1.5), label="down round the arm")
         yield from left.close(g.ARM_W, 20.0, label="take the arm")
         yield from left.wait(0.2)
         grip_at = lambda: point(g.GRIP_POINT)  # noqa: E731
@@ -453,11 +453,11 @@ def demo_script(ctx):
         over = np.array([line_x, g.MARKED_Y + BESIDE, TOP + g.BAR + OVER])
         left.trim = np.zeros(3)
         foot = lambda: point((0.0, 0.0, 0.0))  # noqa: E731
-        yield from left.servo(over, tol=0.001, timeout=T(2.5), gain=0.3, read=foot, label="the foot beside the slot")
+        yield from left.servo(over, tol=0.0015, timeout=T(2.5), gain=0.3, read=foot, label="the foot beside the slot")
         off = yaw(bracket()[1]) - g.MOUNT_YAW
-        if abs(off) > 0.3:
+        if abs(off) > 0.5:
             yield from left.arc(foot(), (0.0, 0.0, 1.0), -off, t=max(0.4, abs(off) / 10.0), label="square the foot to the bar")
-            yield from left.servo(over, tol=0.001, timeout=T(1.5), gain=0.3, read=foot, label="the foot beside the slot")
+            yield from left.servo(over, tol=0.0015, timeout=T(1.5), gain=0.3, read=foot, label="the foot beside the slot")
         report(env, "foot beside the slot: ")
 
     def lower():
