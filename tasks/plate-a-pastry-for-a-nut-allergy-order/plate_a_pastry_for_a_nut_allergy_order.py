@@ -128,7 +128,8 @@ JAW_X, JAW_MID, JAW_WING, JAW_CUP = 0.2675, 0.030, 0.024, math.radians(14.0)
 SLEEVE_X, SLEEVE_T, SLEEVE_H = (0.020, 0.172), 0.0065, 0.022  # coated handle
 SLEEVE_GRIP = (2.0, 1.8)  # the coating's friction, static and dynamic
 GRIP_X = 0.128  # where a gripper squeezes the handle, from the bend: the tongs balance there
-HOLD_ANGLE = 0.022  # rad each arm is squeezed in to carry the tongs
+HOLD_ANGLE = 0.022  # rad each arm is squeezed in while the open jaws go down round a croissant
+FIRM_ANGLE = 0.055  # rad each arm is squeezed in to take the tongs off a surface and to carry them
 FLAT_LEN, FLAT_T = 0.040, 0.004  # a hidden flat on each handle at GRIP_X, square to a pad at HOLD_ANGLE
 PIVOT = (0.006, 0.004)  # each arm's pivot: x, and y either side of the centre line
 BEND_R = 0.005
@@ -459,17 +460,25 @@ def _trace(sim, states, links) -> None:
     def mm(v):
         return np.round((np.asarray(v, float) - [0, 0, TOP]) * 1000, 1).tolist()
 
-    tcp = {}
-    for side in ("left", "right"):
-        if links:
+    def tilt(q):
+        r = parts._quat_to_matrix(q)
+        return [round(math.degrees(math.asin(max(-1.0, min(1.0, r[2, 0])))), 1),  # jaws up (+) or down (-)
+                round(math.degrees(math.atan2(r[2, 1], r[2, 2])), 1),  # rolled about its own length
+                round(math.degrees(math.atan2(r[1, 0], r[0, 0])), 1)]  # turned about the vertical
+
+    tcp, fingers = {}, {}
+    if links:
+        joints = sim.robot_joints()
+        for side in ("left", "right"):
             g = links[side]["gripper"]
             tcp[side] = mm(g[:3, 3] + g[:3, :3] @ np.array([0.0, 0.0, 0.134]))
+            fingers[side] = [round(joints[side].get(j, 0.0) * 1000, 2) for j in ("joint7", "joint8")]
     pairs = sorted({tuple(sorted(t)) for t in TRACK.view["touch"]})
-    tongs = {n: (mm(states[n].pos), np.round(states[n].quat_xyzw, 3).tolist(),
+    tongs = {n: (mm(states[n].pos), tilt(states[n].quat_xyzw),
                  [round(states[n].joints.get(j, 0.0), 3) for j in ("arm_l", "arm_r")])
              for n in ("purple_tongs", "black_tongs")}
-    print(f"[trace] step {TRACK.steps} t {sim.t:.2f} score {TRACK.score():.2f} tcp {tcp} tongs {tongs} "
-          f"plain {[mm(states[c].pos) for c in PLAIN]} plate {mm(states['plate'].pos)} "
+    print(f"[trace] step {TRACK.steps} t {sim.t:.2f} score {TRACK.score():.2f} tcp {tcp} fingers {fingers} "
+          f"tongs {tongs} plain {[mm(states[c].pos) for c in PLAIN]} plate {mm(states['plate'].pos)} "
           f"new carriers {sorted(TRACK.carriers - set(NUT))} carried {sorted(TRACK.carried)} "
           f"handled {sorted(TRACK.handled)} home {TRACK.view['home']} still {TRACK.view['still']} "
           f"clear {TRACK.view['clear']} touch {pairs}", file=sys.stderr, flush=True)
@@ -525,22 +534,32 @@ def lying(rise: float) -> tuple[float, float]:
     return (GRIP_X - PIVOT[0]) * math.sin(tilt) - (SLEEVE_H - STRIP_H) / 2, low
 
 
-def serve_plan(which: str = "purple_tongs") -> list[Waypoint]:
-    """Waypoints that take a pair of tongs by squeezing its handle, carry it over the nearer plain croissant, lower
-    the open jaws either side of it, squeeze, lift it across to the plate, let it down, and lay the tongs back where
-    they were."""
+def _taking(which: str):
+    """Where and how a gripper takes a pair of tongs: (TCP xy, TCP height above the table, how far the jaws' lower
+    edge hangs below the TCP while they are held)."""
     purple = which == "purple_tongs"
     bend_xy = PURPLE_BEND_XY if purple else BLACK_BEND_XY
     surface = PURPLE_BOARD[2] if purple else 0.0  # what the bent end lies on, above the table
     handle, jaws = lying(0.0 if purple else BOARD[2])
-    grip_z = surface + LIFT + handle + PADS_OVER + PAD_TIP  # TCP above the table when taking the tongs
-    jaw_below = grip_z - (surface + LIFT + jaws)  # the jaws' lower edge below the TCP while the tongs are held
+    grip_z = surface + LIFT + handle + PADS_OVER + PAD_TIP
+    return (bend_xy[0] + GRIP_X, bend_xy[1]), grip_z, grip_z - (surface + LIFT + jaws)
+
+
+def _fingers(closed: float, tighter: float = 0.0002) -> float:
+    """The finger target that squeezes each arm ``closed`` rad in from free."""
+    return -(half_span(closed) - tighter)
+
+
+def serve_plan(which: str = "purple_tongs") -> list[Waypoint]:
+    """Waypoints that take a pair of tongs with a firm squeeze of its handle, carry it over the nearer plain
+    croissant, ease the squeeze so the jaws open, lower them either side of it, squeeze, lift it across to the plate,
+    let it down, and lay the tongs back where they were."""
+    take, grip_z, jaw_below = _taking(which)
     ahead = JAW_X - GRIP_X  # the jaws' middle ahead of the TCP
-    take = (bend_xy[0] + GRIP_X, bend_xy[1])
     pick = (ROW[0] - ahead, PLAIN_BOARD_XY[1])
     drop = (PLATE_XY[0] - ahead, PLATE_XY[1])
-    hold = -(half_span(HOLD_ANGLE) - 0.0002)
-    grasp = -(half_span(closed_for(CROISSANT.width)) - PINCH)
+    firm, hold = _fingers(FIRM_ANGLE), _fingers(HOLD_ANGLE)
+    grasp = _fingers(closed_for(CROISSANT.width), PINCH)
     pick_z = BOARD[2] + 0.004 + jaw_below  # jaws 4 mm above the board
     drop_z = PLATE_T + 0.015 + jaw_below  # croissant 11 mm above the plate's well
     back_z = grip_z + 0.002
@@ -551,11 +570,12 @@ def serve_plan(which: str = "purple_tongs") -> list[Waypoint]:
     return [
         Waypoint(1.5, at(take, TRAVEL), FINGER_OPEN, "over the tongs"),
         Waypoint(1.5, at(take, grip_z), FINGER_OPEN, "down beside the handle"),
-        Waypoint(1.0, at(take, grip_z), hold, "squeeze the handle"),
-        Waypoint(0.5, at(take, grip_z), hold, "settle"),
-        Waypoint(1.5, at(take, TRAVEL), hold, "lift the tongs"),
-        Waypoint(2.5, at(pick, TRAVEL), hold, "over the plain croissant"),
-        Waypoint(0.5, at(pick, TRAVEL), hold, "settle"),
+        Waypoint(1.0, at(take, grip_z), firm, "squeeze the handle"),
+        Waypoint(0.5, at(take, grip_z), firm, "settle"),
+        Waypoint(1.5, at(take, TRAVEL), firm, "lift the tongs"),
+        Waypoint(2.5, at(pick, TRAVEL), firm, "over the plain croissant"),
+        Waypoint(0.8, at(pick, TRAVEL), hold, "ease the squeeze: jaws open"),
+        Waypoint(0.4, at(pick, TRAVEL), hold, "settle"),
         Waypoint(2.0, at(pick, pick_z), hold, "jaws down either side of it"),
         Waypoint(0.5, at(pick, pick_z), hold, "settle"),
         Waypoint(1.2, at(pick, pick_z), grasp, "squeeze the jaws onto it"),
@@ -566,12 +586,34 @@ def serve_plan(which: str = "purple_tongs") -> list[Waypoint]:
         Waypoint(0.8, at(drop, drop_z), hold, "let it go"),
         Waypoint(0.5, at(drop, drop_z), hold, "settle"),
         Waypoint(1.2, at(drop, TRAVEL), hold, "up"),
-        Waypoint(2.5, at(take, TRAVEL), hold, "back over where the tongs lay"),
-        Waypoint(1.5, at(take, back_z), hold, "lower the tongs"),
+        Waypoint(0.6, at(drop, TRAVEL), firm, "firm squeeze again"),
+        Waypoint(2.5, at(take, TRAVEL), firm, "back over where the tongs lay"),
+        Waypoint(1.5, at(take, back_z), firm, "lower the tongs"),
         Waypoint(0.8, at(take, back_z), FINGER_OPEN, "let go"),
         Waypoint(1.2, at(take, 0.150), FINGER_OPEN, "up and clear"),
         Waypoint(3.0, at(take, 0.150), FINGER_OPEN, "wait"),
     ]
+
+
+def probe_plan(which: str = "purple_tongs") -> list[Waypoint]:
+    """A test of the hold, not a serve: take the tongs with a firm squeeze, lift them, then ease the squeeze in
+    steps. The trace shows at which squeeze they start to slip in the pads."""
+    take, grip_z, _ = _taking(which)
+
+    def at(z):
+        return (float(take[0]), float(take[1]), TOP + z)
+
+    plan = [
+        Waypoint(1.5, at(TRAVEL), FINGER_OPEN, "over the tongs"),
+        Waypoint(1.5, at(grip_z), FINGER_OPEN, "down beside the handle"),
+        Waypoint(1.0, at(grip_z), _fingers(FIRM_ANGLE), "squeeze the handle"),
+        Waypoint(0.5, at(grip_z), _fingers(FIRM_ANGLE), "settle"),
+        Waypoint(1.5, at(TRAVEL), _fingers(FIRM_ANGLE), "lift the tongs"),
+    ]
+    for closed in (0.040, 0.030, 0.022, 0.015, 0.010):
+        plan.append(Waypoint(0.3, at(TRAVEL), _fingers(closed), f"ease to {closed:.3f} rad"))
+        plan.append(Waypoint(0.4, at(TRAVEL), _fingers(closed), "hold"))
+    return plan
 
 
 PURPLE_ARM = "right" if SIDE > 0 else "left"  # the arm on the purple board's side
@@ -581,7 +623,10 @@ BLACK_ARM = "left" if SIDE > 0 else "right"
 def demo():
     """The arm on the purple board's side serves the nearer plain croissant with the purple tongs and lays them back
     on the purple board. It plays open loop from the published start layout. With TASK_DEMO=black the other arm
-    does the same with the black-handled tongs instead, which scores 0."""
-    if os.environ.get("TASK_DEMO", "").strip().lower() == "black":
+    does the same with the black-handled tongs instead, which scores 0. TASK_DEMO=probe tests the hold only."""
+    mode = os.environ.get("TASK_DEMO", "").strip().lower()
+    if mode == "black":
         return {BLACK_ARM: serve_plan("black_tongs")}
+    if mode == "probe":
+        return {PURPLE_ARM: probe_plan("purple_tongs")}
     return {PURPLE_ARM: serve_plan("purple_tongs")}

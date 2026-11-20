@@ -403,6 +403,16 @@ class Sim:
         """Move the spring's rest point of ``part``'s ``joint`` (rad or m); it needs ``spring > 0`` to act."""
         _set_target(self.env.unwrapped, part, joint, value)
 
+    def robot_joints(self) -> dict[str, dict[str, float]]:
+        """Each arm's joint positions (rad; finger joints in m): {"left": {joint: value}, "right": {...}}."""
+        base = self.env.unwrapped
+        out = {}
+        for side, key in (("left", "left_robot"), ("right", "right_robot")):
+            asset = base.scene[key]
+            q = _np(asset.data.joint_pos)[0]
+            out[side] = {n: float(q[i]) for i, n in enumerate(asset.joint_names)}
+        return out
+
     def robot_links(self, names=None) -> dict[str, dict[str, np.ndarray]]:
         """Each arm's link poses as 4x4 matrices in the scene frame: {"left": {link: pose}, "right": {...}}."""
         base = self.env.unwrapped
