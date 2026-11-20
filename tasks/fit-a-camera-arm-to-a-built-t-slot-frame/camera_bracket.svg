@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="930" height="786" viewBox="0 0 930 786">
+<rect width="100%" height="100%" fill="white"/>
+<polygon points="180.0,66.0 300.0,66.0 300.0,306.0 180.0,306.0 180.0,195.0 189.0,186.0 180.0,177.0" fill="#eee" stroke="#222" stroke-width="1"/>
+<rect x="300.0" y="156.0" width="540.0" height="60.0" fill="#eee" stroke="#222" stroke-width="1"/>
+<rect x="714.0" y="216.0" width="126.0" height="12.0" fill="#ddd" stroke="#222" stroke-width="1"/>
+<rect x="714.0" y="228.0" width="126.0" height="69.0" fill="none" stroke="#222" stroke-width="1" stroke-dasharray="4 3"/>
+<circle cx="240.0" cy="96.0" r="9.9" fill="none" stroke="#222" stroke-width="1"/>
+<circle cx="240.0" cy="276.0" r="9.9" fill="none" stroke="#222" stroke-width="1"/>
+<text x="240.0" y="54.0" font-family="Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle" fill="#222">foot 80 x 40 x 6.4</text>
+<text x="171.0" y="190.5" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#222">V notch 3 deep</text>
+<text x="180.0" y="324.0" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="start" fill="#222">2 holes 6.6, 60 apart</text>
+<text x="570.0" y="147.0" font-family="Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle" fill="#222">arm 20 wide, 12 high, to 200 from the foot's middle</text>
+<text x="840.0" y="315.0" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#222">side plate 42 x 42 x 4; camera 42 x 42 x 23 (dashed)</text>
+<text x="600.0" y="190.5" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="start" fill="#222">hold here</text>
+<line x1="594.0" y1="156.0" x2="594.0" y2="216.0" stroke="#888" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="180.0" y="36.0" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#222">Plan (from above)</text>
+<rect x="180.0" y="550.8" width="120.0" height="19.2" fill="#eee" stroke="#222" stroke-width="1"/>
+<rect x="300.0" y="534.0" width="540.0" height="36.0" fill="#eee" stroke="#222" stroke-width="1"/>
+<rect x="714.0" y="534.0" width="126.0" height="126.0" fill="#ddd" stroke="#222" stroke-width="1"/>
+<rect x="231.0" y="532.8" width="18.0" height="66.0" fill="none" stroke="#222" stroke-width="1" stroke-dasharray="4 3"/>
+<rect x="228.4" y="585.1" width="23.2" height="13.7" fill="none" stroke="#222" stroke-width="1" stroke-dasharray="4 3"/>
+<rect x="228.4" y="580.6" width="23.2" height="4.5" fill="none" stroke="#222" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="180.0" y="450.0" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#222">Side (along the foot's long side)</text>
+<text x="570.0" y="525.0" font-family="Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle" fill="#222">undersides of foot and arm flush; the arm is 12 high</text>
+<text x="840.0" y="678.0" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#222">plate 42 high: top level with the arm's, 30 below its underside</text>
+<text x="180.0" y="628.8" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="start" fill="#222">M6 x 16 cap screw and 80/20 3931 nut (dashed):</text>
+<text x="180.0" y="643.8" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="start" fill="#222">nut threaded on until the screw's end, 9.6 below the foot, is flush with its underside</text>
+<text x="180.0" y="756.0" font-family="Helvetica, Arial, sans-serif" font-size="11" text-anchor="start" fill="#222">Print in PETG, solid, foot down. Two 3.4 mm holes 20 mm apart in the side plate take the camera's M3 back threads. All sizes in mm.</text>
+</svg>
