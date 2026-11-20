@@ -60,7 +60,23 @@ front edge (it stays shut); slide the lock's button (it does not move).
 
 ## Results in simulation
 
-TBD after the simulator runs.
+| Run | Physics | Result |
+|---|---|---|
+| Scripted demo, `--mode full` | GPU, cameras, 640 x 360 video | 1.0: success at step 889 of 3,600 (44.5 s) |
+| Dream-1 | | TBD |
+
+The demo run, by the scorer's log: vial held at 6.0 s; cap on its lugs at 10.9 s and snapped at 13.2 s; vial let go in the lock
+box at 22.3 s, standing; lid shut by 30.7 s; hasp caught at 35.6 s; the middle dial 67 degrees off its code at 39.9 s (score
+0.75); last toy in the basket and both arms clear and still for 1 s at 44.5 s (1.0).
+
+Mechanism tests in the simulator (CPU physics, no cameras, 200 control steps each): `settle`: every part at rest where the setup
+puts it, the lid open on its stop, the ten tablets in the vial. `cap`: the cap set on the free-standing vial's neck and turned
+on. `place`: the closed vial, carried by its cap, let go in the lock box and standing. `lid`: pushed past upright, it falls
+shut and the hasp hangs 8 degrees off the lock. `lock`: the hasp pressed home and caught. `dials`: one stroke turns the middle
+dial 67 degrees. `toys`: the block into the basket.
+
+The other rows of the scoring table (`none` 0, `literal` 0 with the latch "in the basket", `toys_only` 0, `uncapped` 0.5,
+`no_dials` 0) were run on the kinematic stand-in (`dryrun.py`, in `test_task.py`), not in the simulator.
 
 ## The demo
 
@@ -190,7 +206,9 @@ their marks and empty the basket. Check that the box, the basket and the mat hav
 
 ## Runtime and seeds
 
-TBD after the simulator runs. The scene does not depend on the seed; `object_jitter=0`.
+The scripted demo takes 889 control steps (44.5 s of simulated time): about 3 minutes on the GPU with cameras and video (4.9
+steps a second), after about 20 s of start-up. A model trial runs up to 3,600 steps. The scene does not depend on the seed;
+`object_jitter=0`.
 
 ## Files
 
