@@ -80,14 +80,14 @@ goes under no corner); one that does not lets the camera end drop to the table. 
 same way. Screws are left snug in this task; the final torque (6 N m for an M6 hammer nut in the maker item's data) is applied later
 with a torque key and is not part of it.
 
-What the scripted demo's modes score. `full` is measured in the simulator; the others are from the kinematic stand-in:
+What the scripted demo's modes score in the simulator (CPU physics, no cameras, all five wrong-way modes in one launch):
 
 | mode | what it does | score |
 | --- | --- | --- |
 | `full` | the whole job | 1.0 |
 | `none` | nothing | 0 |
 | `held` | the whole job, but never lets go of the arm | 0 |
-| `unheld` | lets go as soon as the foot is on the bar, then drives the screws | 0.25 or less |
+| `unheld` | lets go as soon as the foot is on the bar, then drives the screws | 0: the foot tips 3 degrees, the nuts lift into the opening and the first screw's turning throws them out onto the bar |
 | `one_screw` | tightens one screw only | 0.5 |
 | `off_line` | mounts the bracket 4 mm from the line | 0.75 |
 
