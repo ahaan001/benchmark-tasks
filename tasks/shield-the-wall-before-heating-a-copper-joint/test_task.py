@@ -360,7 +360,7 @@ def test_task_json_numbers_match_the_code():
     scoring = [f"within {S.UPRIGHT_DEG:.0f} degrees of upright", f"at least {100 * S.COVER_M:.0f} cm beyond the coupling", f"flame within {100 * S.NEAR_M:.0f} cm of the coupling while not shielded",
                f"flame within {100 * S.WOOD_M:.0f} cm of wood", f"more than {S.LYING_DEG:.0f} degrees from upright with no gripper within {100 * S.CLEAR_M:.0f} cm",
                f"tip within {100 * S.TIP_M:.0f} cm of the coupling for {S.HEAT_S:.0f} s in all", f"upright within {S.HOME_DEG:.0f} degrees", f"within {100 * S.HOME_M:.0f} cm of the mark's centre",
-               f"both grippers {100 * S.CLEAR_M:.0f} cm or more from it", f"moved under {1000 * S.REST_M:.0f} mm) for the last {S.REST_S:.0f} s"]
+               f"both grippers {100 * S.CLEAR_M:.0f} cm or more from it", f"moved under {1000 * S.REST_M:.0f} mm and turned under {S.REST_DEG:.0f} degree) for the last {S.REST_S:.0f} s"]
     for s in scoring:
         assert s in d["scoring"], s
     limit = int(d["run_limit"].split()[0].replace(",", ""))
