@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="900" viewBox="0 0 1240 900" font-family="Helvetica, Arial, sans-serif" font-size="11">
+<rect width="1240" height="900" fill="white"/>
+<text x="20.0" y="26.0" font-size="14" text-anchor="start" fill="black">Bench fixtures for the wax-setting task. Millimetres. Top views, heights in the notes; where each stands is in the README's layout table.</text>
+<text x="20.0" y="44.0" font-size="11" text-anchor="start" fill="black">Funnel mouths (grey): steel plates 8 wide and 1.5 thick at 45 degrees, their lower edges on the opening's edges, standing 5.7 above it.</text>
+<polygon points="40.0,110.0 240.0,110.0 240.0,310.0 40.0,310.0" fill="#ead9b8" stroke="black" stroke-width="1.0"/>
+<polygon points="128.8,198.8 151.2,198.8 151.2,221.2 128.8,221.2" fill="white" stroke="black" stroke-width="1.0"/>
+<text x="40.0" y="88.0" font-size="11" text-anchor="start" fill="black">Stone block: beech 40 x 40 x 10 high</text>
+<text x="40.0" y="102.0" font-size="11" text-anchor="start" fill="black">square hole 4.5 across, 6 deep, in the middle</text>
+<polygon points="330.0,110.0 505.0,110.0 505.0,160.0 330.0,160.0" fill="#d7d9de" stroke="black" stroke-width="1.0"/>
+<line x1="417.5" y1="110.0" x2="417.5" y2="160.0" stroke="#666" stroke-width="0.8" stroke-dasharray="4 3"/>
+<text x="330.0" y="88.0" font-size="11" text-anchor="start" fill="black">V-block: steel 35 x 10 x 30 high, 90 degree V</text>
+<text x="330.0" y="102.0" font-size="11" text-anchor="start" fill="black">it carries the stick's axis 25 above the table, 30 from the ring</text>
+<polygon points="640.0,110.0 840.0,110.0 840.0,210.0 640.0,210.0" fill="#ead9b8" stroke="black" stroke-width="1.0"/>
+<text x="640.0" y="88.0" font-size="11" text-anchor="start" fill="black">Rest: beech 40 x 20 x 14.8 high</text>
+<text x="640.0" y="102.0" font-size="11" text-anchor="start" fill="black">85 from the ring, on the same side as the V-block</text>
+<polygon points="40.0,470.0 740.0,470.0 740.0,670.0 40.0,670.0" fill="#ead9b8" stroke="black" stroke-width="1.0"/>
+<polygon points="696.0,536.8 724.3,536.8 724.3,603.2 696.0,603.2" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="584.0,536.8 555.7,536.8 555.7,603.2 584.0,603.2" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="584.0,541.8 696.0,541.8 696.0,598.2 584.0,598.2" fill="#d9c49a" stroke="black" stroke-width="1.0"/>
+<polygon points="584.0,563.5 696.0,563.5 696.0,576.5 584.0,576.5" fill="white" stroke="black" stroke-width="1.0"/>
+<polygon points="152.5,530.0 180.8,530.0 180.8,610.0 152.5,610.0" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="127.5,530.0 99.2,530.0 99.2,610.0 127.5,610.0" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="100.0,582.5 180.0,582.5 180.0,610.8 100.0,610.8" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="100.0,557.5 180.0,557.5 180.0,529.2 100.0,529.2" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="127.5,557.5 152.5,557.5 152.5,582.5 127.5,582.5" fill="white" stroke="black" stroke-width="1.0"/>
+<text x="640.0" y="686.0" font-size="10" text-anchor="middle" fill="black">tweezers</text>
+<text x="140.0" y="686.0" font-size="10" text-anchor="middle" fill="black">pusher</text>
+<text x="40.0" y="392.0" font-size="11" text-anchor="start" fill="black">Tool block: beech 140 long x 40 wide x 30 high, its length across the bench (along x)</text>
+<text x="40.0" y="406.0" font-size="11" text-anchor="start" fill="black">Tweezer trough: 22.4 long, 26 deep, its floor 2.6 wide (white); its two long walls lean apart to 11.3 at the block's top</text>
+<text x="40.0" y="420.0" font-size="11" text-anchor="start" fill="black">(9.5 degrees from upright), and it has a mouth at each end. The tips stand on the floor; the walls keep the legs upright.</text>
+<text x="40.0" y="434.0" font-size="11" text-anchor="start" fill="black">Pusher hole 5 x 5, 22 deep, with a mouth all round.</text>
+<text x="40.0" y="448.0" font-size="11" text-anchor="start" fill="black">Centres 100 apart, each 20 from an end, on the block's centre line.</text>
+<polygon points="880.0,110.0 1180.0,110.0 1180.0,410.0 880.0,410.0" fill="#d7d9de" stroke="black" stroke-width="1.0"/>
+<polygon points="970.0,200.0 1090.0,200.0 1090.0,320.0 970.0,320.0" fill="#b9bcc4" stroke="black" stroke-width="1.0"/>
+<polygon points="1067.5,200.0 1095.8,200.0 1095.8,320.0 1067.5,320.0" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="992.5,200.0 964.2,200.0 964.2,320.0 992.5,320.0" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="970.0,297.5 1090.0,297.5 1090.0,325.8 970.0,325.8" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="970.0,222.5 1090.0,222.5 1090.0,194.2 970.0,194.2" fill="#c9ccd3" stroke="black" stroke-width="1.0"/>
+<polygon points="992.5,222.5 1067.5,222.5 1067.5,297.5 992.5,297.5" fill="white" stroke="black" stroke-width="1.0"/>
+<text x="880.0" y="88.0" font-size="11" text-anchor="start" fill="black">Pen stand: steel base 60 x 60 x 5, square tube 24 outside,</text>
+<text x="880.0" y="102.0" font-size="11" text-anchor="start" fill="black">its top 42 above the table, with a mouth all round</text>
+<polygon points="750.0,860.0 1230.0,860.0 1230.0,820.0 750.0,820.0" fill="#d7d9de" stroke="black" stroke-width="1.0"/>
+<polygon points="894.0,820.0 894.0,524.0 930.0,524.0 930.0,612.0 954.0,612.0 954.0,820.0" fill="#b9bcc4" stroke="black" stroke-width="1.0"/>
+<line x1="930.0" y1="524.0" x2="884.7" y2="478.7" stroke="black" stroke-width="1.5"/>
+<polygon points="1086.0,820.0 1086.0,524.0 1050.0,524.0 1050.0,612.0 1026.0,612.0 1026.0,820.0" fill="#b9bcc4" stroke="black" stroke-width="1.0"/>
+<line x1="1050.0" y1="524.0" x2="1095.3" y2="478.7" stroke="black" stroke-width="1.5"/>
+<text x="820.0" y="432.0" font-size="11" text-anchor="start" fill="black">Section through the pen stand:</text>
+<text x="820.0" y="448.0" font-size="10" text-anchor="start" fill="black">bore 15 square down to a ledge 31 above the table,</text>
+<text x="820.0" y="462.0" font-size="10" text-anchor="start" fill="black">then 9 square for the tip, which hangs clear of the base</text>
+</svg>
