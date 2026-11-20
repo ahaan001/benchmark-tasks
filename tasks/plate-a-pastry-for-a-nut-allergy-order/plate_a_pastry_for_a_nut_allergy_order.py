@@ -60,13 +60,14 @@ BOARD_PURPLE = _board("board_purple", PURPLE_BOARD_XY, PURPLE_BOARD, PURPLE, (0.
 # --- croissants (loose) -----------------------------------------------------------------------------------------------
 CROISSANT = geo.Croissant(length=0.140, width=0.064, height=0.045)
 CROISSANT_MASS = 0.065
+CRUST_PATCH = 0.010  # radius of the patch the crust gives over under a jaw: it resists twisting between the jaws
 ROW = (0.425, 0.575)  # the two croissants on a board, front to back
 LIFT = 0.001  # loose things start 1 mm above what they rest on
 
 
 def _croissant(name, xy, z, almond):
     pts, faces, normals = CROISSANT.mesh()
-    shapes = [parts.hull(p, geo.hull_faces(p)) for p in CROISSANT.pieces()]
+    shapes = [parts.hull(p, geo.hull_faces(p), patch=CRUST_PATCH) for p in CROISSANT.pieces()]
     shapes.append(parts.mesh(pts, faces, normals, color=CRUST))
     if almond:
         sugar, flakes = CROISSANT.topping()
@@ -116,40 +117,31 @@ def _plate():
 PLATE = _plate()
 
 # --- tongs (loose, jointed) -------------------------------------------------------------------------------------------
-# Part frame: origin under the bent end, x along the tongs to the jaws, z up; the tongs lie on their side, so the arms
-# swing about the vertical through the bend and a gripper pointing down squeezes them across y. The shapes are written
-# at the free opening (joint 0); a one-piece tong has no stop there, the bend is the spring.
+# Part frame: origin on the surface under the bent end, x along the tongs to the jaws, z up; the tongs lie on their
+# side, so the arms swing about the vertical through the bend and a gripper pointing down squeezes them across y.
+# A one-piece tong has no joint and no stop: the bend is the spring. Here the arm on the +y side, with the bend, is
+# the part's body and the other arm turns on a sprung hinge at the bend. The shapes are written at the free opening
+# (joint 0); the joint reads twice what each arm is squeezed in.
 TONG_LEN = 0.305  # 12 in
 TONG_OPEN = 0.108  # across the open jaws, outside (4.25 in)
-STRIP_H, STRIP_T = 0.020, 0.004  # each arm: a strip on edge (0.9 mm steel; 4 mm here so contacts hold)
-STRIP_X = (0.008, 0.232)
+TONG_MASS = 0.132  # 0.29 lb
+STRIP_H, STRIP_T = 0.020, 0.004  # each arm: a strip on edge (20 gauge steel; 4 mm here so contacts hold)
+STRIP_X = (0.009, 0.232)
 JAW_H, JAW_T = 0.036, 0.004  # scalloped jaw, 1.43 in tall
 JAW_X, JAW_MID, JAW_WING, JAW_CUP = 0.2675, 0.030, 0.024, math.radians(14.0)
+JAW_TOE = math.radians(6.0)  # each jaw is set in toward the other: they lie parallel when shut on a croissant
 SLEEVE_X, SLEEVE_T, SLEEVE_H = (0.020, 0.172), 0.0065, 0.022  # coated handle
 SLEEVE_GRIP = (2.0, 1.8)  # the coating's friction, static and dynamic
-GRIP_X = 0.128  # where a gripper squeezes the handle, from the bend: the tongs balance there
-HOLD_ANGLE = 0.022  # rad each arm is squeezed in while the open jaws go down round a croissant
-FIRM_ANGLE = 0.055  # rad each arm is squeezed in to take the tongs off a surface and to carry them
-FLAT_LEN, FLAT_T = 0.040, 0.004  # a hidden flat on each handle at GRIP_X, square to a pad at HOLD_ANGLE
-PIVOT = (0.006, 0.004)  # each arm's pivot: x, and y either side of the centre line
+SLEEVE_PATCH = 0.008  # radius of the patch a rubber pad beds onto the coating over: it resists twisting in the grip
+ARM_CENTRE = 0.160  # each arm's mass centre along it from the bend: strip, jaw plates and coating weighed out
+PIVOT = (0.006, 0.004)  # the hinge's x on the centre line; each arm's inner face this far to its side there
 BEND_R = 0.005
-TONG_SPRING = 6.0  # N m/rad each arm (an estimate: about 7 N at mid-handle closes them)
-TONG_DAMPING = 0.10
+TONG_SPRING = 3.0  # N m/rad between the arms (an estimate: about 6 N on each handle at mid-length closes them)
+TONG_DAMPING = 0.05
 TONG_SPREAD = 0.06  # rad an arm can be pushed open past its free position
-ARM_MASS, BEND_MASS = 0.062, 0.012
 JAW_DROP = (JAW_H - STRIP_H) / 2  # a jaw's lower edge below its strip's
-JAW_HEEL = JAW_X - JAW_MID / 2 - JAW_WING * math.cos(JAW_CUP)  # where a jaw's lower edge begins: it rests there
-
-
-def _tilt(rise: float) -> float:
-    """How far the jaw end is raised (rad) when the tongs lie with the bend on a surface and the jaws' heels
-    ``rise`` above it."""
-    reach = JAW_HEEL - PIVOT[0]
-    lo, hi = 0.0, 0.5
-    for _ in range(50):
-        t = (lo + hi) / 2
-        lo, hi = (t, hi) if reach * math.sin(t) - JAW_DROP * math.cos(t) < rise else (lo, t)
-    return (lo + hi) / 2
+SLEEVE_DROP = (SLEEVE_H - STRIP_H) / 2  # the coating's lower edge below the strip's
+LEVEL = (0.0, 0.0)  # lying: (how far the jaw end is raised, how far the bend is above the surface under it)
 
 
 def _arm_frame(side: int, angle: float, tilt: float) -> np.ndarray:
@@ -157,78 +149,134 @@ def _arm_frame(side: int, angle: float, tilt: float) -> np.ndarray:
     return parts._rot((0, 0, 1), side * angle) @ parts._rot((0, 1, 0), -tilt)
 
 
-def _place(side, angle, tilt, size, x, y_in, z) -> tuple:
+def _place(side, angle, lie, size, x, y_in, z) -> tuple:
     """(size, centre, rotation) of a box on an arm: its middle ``x`` along the arm from the bend, its inner face
     ``y_in`` off the arm's own line toward the outside, its middle ``z`` above the strip's lower edge."""
+    tilt, up = lie
     r = _arm_frame(side, angle, tilt)
-    pivot = np.array([PIVOT[0], side * PIVOT[1], 0.0])
-    local = np.array([x - PIVOT[0], side * (y_in + size[1] / 2), z])
-    return np.asarray(size, float), pivot + r @ local, r
+    hinge = np.array([PIVOT[0], 0.0, up])
+    local = np.array([x - PIVOT[0], side * (PIVOT[1] + y_in + size[1] / 2), z])
+    return np.asarray(size, float), hinge + r @ local, r
 
 
-def _jaw_boxes(side, angle, tilt):
-    """The jaw's three plates: the two wings turned in by JAW_CUP so the jaw cups what it holds."""
-    out = []
+def _jaw_boxes(side, angle, lie):
+    """The jaw's three plates: the two wings turned in by JAW_CUP so the jaw cups what it holds, the whole jaw set
+    in by JAW_TOE about its middle."""
+    tilt, up = lie
+    r = _arm_frame(side, angle, tilt)
+    hinge = np.array([PIVOT[0], 0.0, up])
+    middle = np.array([JAW_X - PIVOT[0], side * (PIVOT[1] + JAW_T / 2), STRIP_H / 2])
+    toe = parts._rot((0, 0, 1), -side * JAW_TOE)
     reach = JAW_MID / 2 + JAW_WING / 2 * math.cos(JAW_CUP)
+    out = []
     for dx, cup in ((-reach, JAW_CUP), (0.0, 0.0), (reach, -JAW_CUP)):
-        size, centre, r = _place(side, angle, tilt, (JAW_WING if cup else JAW_MID, JAW_T, JAW_H), JAW_X + dx,
-                                 -abs(math.sin(cup)) * JAW_WING / 2, STRIP_H / 2)
-        out.append((size, centre, r @ parts._rot((0, 0, 1), side * cup)))
+        offset = np.array([dx, -side * abs(math.sin(cup)) * JAW_WING / 2, 0.0])
+        size = np.array([JAW_WING if cup else JAW_MID, JAW_T, JAW_H])
+        out.append((size, hinge + r @ (middle + toe @ offset), r @ toe @ parts._rot((0, 0, 1), side * cup)))
     return out
+
+
+def _corners(size, centre, r) -> np.ndarray:
+    signs = np.array([[sx, sy, sz] for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)])
+    return centre + (signs * size / 2) @ r.T
+
+
+# where a jaw's lower edge begins, along the arm from the bend: lying, the tongs rest there
+JAW_HEEL = float(min(_corners(*b)[:, 0].min() for b in _jaw_boxes(1, 0.0, LEVEL)))
+
+
+def _lie(rise: float) -> tuple[float, float]:
+    """How the tongs lie with their jaws' heels ``rise`` above the surface under the bent end: (how far the jaw end
+    is raised, rad; how far the bend's own lower edge is above that surface). Lying flat, the coating's near end
+    carries the bent end, not the bend itself."""
+    def lift(t):
+        return max(0.0, SLEEVE_DROP * math.cos(t) - (SLEEVE_X[0] - PIVOT[0]) * math.sin(t))
+
+    lo, hi = 0.0, 0.5
+    for _ in range(50):
+        t = (lo + hi) / 2
+        heel = lift(t) + (JAW_HEEL - PIVOT[0]) * math.sin(t) - JAW_DROP * math.cos(t)
+        lo, hi = (t, hi) if heel < rise else (lo, t)
+    return (lo + hi) / 2, lift((lo + hi) / 2)
+
+
+def _sleeve(side, angle, lie):
+    return _place(side, angle, lie, (SLEEVE_X[1] - SLEEVE_X[0], SLEEVE_T, SLEEVE_H), (SLEEVE_X[0] + SLEEVE_X[1]) / 2,
+                  -(SLEEVE_T - STRIP_T) / 2, STRIP_H / 2)
 
 
 def _free_angle() -> float:
     """The half-angle between the arms at rest that makes the open jaws TONG_OPEN across, outside."""
-    signs = np.array([[sx, sy, 0.0] for sx in (-1, 1) for sy in (-1, 1)])
     lo, hi = 0.05, 0.4
     for _ in range(40):
         a = (lo + hi) / 2
-        widest = max((centre + (signs * size / 2) @ r.T)[:, 1].max() for size, centre, r in _jaw_boxes(1, a, 0.0))
+        widest = max(_corners(*b)[:, 1].max() for b in _jaw_boxes(1, a, LEVEL))
         lo, hi = (a, hi) if widest < TONG_OPEN / 2 else (lo, a)
     return (lo + hi) / 2
 
 
+def _shut_angle() -> float:
+    """How far in each arm is when the two jaws are 1 mm apart at their nearest."""
+    lo, hi = 0.0, TONG_FREE
+    for _ in range(40):
+        c = (lo + hi) / 2
+        nearest = min(_corners(*b)[:, 1].min() for b in _jaw_boxes(1, TONG_FREE - c, LEVEL))
+        lo, hi = (c, hi) if nearest > 0.0005 else (lo, c)
+    return lo
+
+
 TONG_FREE = _free_angle()
-TONG_SHUT = TONG_FREE - 0.012  # joint travel from free to jaws together
+TONG_SHUT = _shut_angle()
 
 
-def _flat(side, angle, tilt):
-    """(size, centre, rotation) of the hidden flat on an arm's handle. The coating beds onto a gripper's pad; a rigid
-    handle would meet it along one edge. The flat stands in for that: its outer face runs along the tongs when the arm
-    is HOLD_ANGLE in from free, flush with the coating at its jaw end."""
-    r = _arm_frame(side, angle, tilt)
-    pivot = np.array([PIVOT[0], side * PIVOT[1], 0.0])
-    turn = parts._rot((0, 0, 1), -side * (TONG_FREE - HOLD_ANGLE))
-    front = np.array([GRIP_X + FLAT_LEN / 2 - PIVOT[0], side * (SLEEVE_T + STRIP_T) / 2, STRIP_H / 2])
-    centre = front + turn @ np.array([-FLAT_LEN / 2, -side * FLAT_T / 2, 0.0])
-    return np.array([FLAT_LEN, FLAT_T, SLEEVE_H]), pivot + r @ centre, r @ turn
+def _arm(side: int, lie, handle) -> list:
+    """One arm's shapes at the free opening: strip, jaw plates and coated handle."""
+    def box(placed, color, **more):
+        size, centre, r = placed
+        return parts.box(size, at=centre, color=color, rot=tuple(parts._matrix_to_quat(r)), **more)
+
+    shapes = [box(_place(side, TONG_FREE, lie, (STRIP_X[1] - STRIP_X[0], STRIP_T, STRIP_H),
+                         (STRIP_X[0] + STRIP_X[1]) / 2, 0.0, STRIP_H / 2), STEEL)]
+    shapes += [box(placed, STEEL) for placed in _jaw_boxes(side, TONG_FREE, lie)]
+    shapes.append(box(_sleeve(side, TONG_FREE, lie), handle, friction=SLEEVE_GRIP, patch=SLEEVE_PATCH))
+    return shapes
+
+
+def _arm_centre(side: int, lie) -> tuple:
+    return tuple(float(v) for v in _place(side, TONG_FREE, lie, (0.0, STRIP_T, 0.0), ARM_CENTRE, 0.0, STRIP_H / 2)[1])
 
 
 def _tongs(name: str, xy, z: float, rise: float, handle):
     """A pair of tongs with the bent end at ``xy`` on a surface at ``z`` and the jaws' heels ``rise`` above it
     (0: lying on one surface; a board's thickness: jaws on the board, bent end on the table)."""
-    tilt = _tilt(rise)
-    joints = []
-    for side, joint in ((1, "arm_l"), (-1, "arm_r")):
-        shapes = []
-        size, centre, r = _place(side, TONG_FREE, tilt, (STRIP_X[1] - STRIP_X[0], STRIP_T, STRIP_H),
-                                 (STRIP_X[0] + STRIP_X[1]) / 2, 0.0, STRIP_H / 2)
-        shapes.append(parts.box(size, at=centre, color=STEEL, rot=tuple(parts._matrix_to_quat(r))))
-        for size, centre, r in _jaw_boxes(side, TONG_FREE, tilt):
-            shapes.append(parts.box(size, at=centre, color=STEEL, rot=tuple(parts._matrix_to_quat(r))))
-        size, centre, r = _place(side, TONG_FREE, tilt, (SLEEVE_X[1] - SLEEVE_X[0], SLEEVE_T, SLEEVE_H),
-                                 (SLEEVE_X[0] + SLEEVE_X[1]) / 2, -(SLEEVE_T - STRIP_T) / 2, STRIP_H / 2)
-        shapes.append(parts.box(size, at=centre, color=handle, rot=tuple(parts._matrix_to_quat(r)),
-                                friction=SLEEVE_GRIP))
-        size, centre, r = _flat(side, TONG_FREE, tilt)
-        shapes.append(parts.box(size, at=centre, color=handle, rot=tuple(parts._matrix_to_quat(r)),
-                                friction=SLEEVE_GRIP, visible=False))
-        joints.append(parts.Hinge(joint, shapes=shapes, pivot=(PIVOT[0], side * PIVOT[1], STRIP_H / 2),
-                                  axis=(0.0, 0.0, float(side)), lower=-TONG_SHUT, upper=TONG_SPREAD,
-                                  mass=ARM_MASS, spring=TONG_SPRING, damping=TONG_DAMPING))
-    bend = [parts.cylinder(BEND_R, STRIP_H, at=(BEND_R, 0.0, STRIP_H / 2), color=STEEL, axis="z")]
-    return parts.Part(name, pos=(xy[0], xy[1], z + LIFT), mass=BEND_MASS, friction=(0.6, 0.5), shapes=bend,
-                      joints=joints)
+    lie = _lie(rise)
+    bend = parts.cylinder(BEND_R, STRIP_H, at=(BEND_R, 0.0, lie[1] + STRIP_H / 2), color=STEEL, axis="z")
+    hinge = parts.Hinge("arm_r", shapes=_arm(-1, lie, handle), pivot=(PIVOT[0], 0.0, lie[1] + STRIP_H / 2),
+                        axis=(0.0, 0.0, -1.0), lower=-2 * TONG_SHUT, upper=2 * TONG_SPREAD, mass=TONG_MASS / 2,
+                        spring=TONG_SPRING, damping=TONG_DAMPING, centre=_arm_centre(-1, lie))
+    return parts.Part(name, pos=(xy[0], xy[1], z + LIFT), mass=TONG_MASS / 2, friction=(0.6, 0.5),
+                      shapes=[*_arm(1, lie, handle), bend], joints=[hinge], centre=_arm_centre(1, lie))
+
+
+def tong_state(name: str, closed: float = 0.0, pos=None, quat_xyzw=None):
+    """The state of a pair of tongs with each arm ``closed`` rad in from free, its frame (origin under the bent end,
+    x along its centre line) at ``pos``/``quat_xyzw`` (default: where it starts)."""
+    spec = SPECS[name]
+    p = np.asarray(spec.pos if pos is None else pos, float)
+    r = np.eye(3) if quat_xyzw is None else parts._quat_to_matrix(quat_xyzw)
+    hinge = np.array([PIVOT[0], 0.0, 0.0])
+    turn = parts._rot((0, 0, 1), -closed)  # the body is the +y arm: closing turns it clockwise
+    return spec.state(joints={"arm_r": -2 * closed}, pos=p + r @ (hinge - turn @ hinge),
+                      quat_xyzw=parts._matrix_to_quat(r @ turn))
+
+
+def tong_frame(state) -> tuple[np.ndarray, np.ndarray, float]:
+    """The reverse of :func:`tong_state`: (position, rotation) of the tongs' own frame and how far in each arm is."""
+    closed = -state.joints["arm_r"] / 2
+    hinge = np.array([PIVOT[0], 0.0, 0.0])
+    turn = parts._rot((0, 0, 1), -closed)
+    r = parts._quat_to_matrix(state.quat_xyzw) @ turn.T
+    return np.asarray(state.pos, float) - r @ (hinge - turn @ hinge), r, closed
 
 
 BLACK_BEND_XY = (ROW[0] - JAW_X, ALMOND_BOARD_XY[1])  # jaws round the nearer almond croissant
@@ -292,7 +340,8 @@ def pieces(name: str, state) -> list[geo.Piece]:
         at, rot = p + r @ (np.asarray(s.at) - origins[link]), r @ s.rotation
         tag = link
         if s.kind == "box" and abs(s.size[2] - JAW_H) < 1e-9:
-            tag = f"{link}:jaw:mid" if abs(s.size[0] - JAW_MID) < 1e-9 else f"{link}:jaw"
+            arm = "arm_l" if link == "base" else link  # the tongs' body is their +y arm
+            tag = f"{arm}:jaw:mid" if abs(s.size[0] - JAW_MID) < 1e-9 else f"{arm}:jaw"
         if planes is None:
             out.append(geo.world_box(at, rot, s.size, pts, tag))
         else:
@@ -460,25 +509,31 @@ def _trace(sim, states, links) -> None:
     def mm(v):
         return np.round((np.asarray(v, float) - [0, 0, TOP]) * 1000, 1).tolist()
 
-    def tilt(q):
-        r = parts._quat_to_matrix(q)
-        return [round(math.degrees(math.asin(max(-1.0, min(1.0, r[2, 0])))), 1),  # jaws up (+) or down (-)
-                round(math.degrees(math.atan2(r[2, 1], r[2, 2])), 1),  # rolled about its own length
-                round(math.degrees(math.atan2(r[1, 0], r[0, 0])), 1)]  # turned about the vertical
+    def lay(state):
+        p, r, closed = tong_frame(state)
+        return (mm(p), [round(math.degrees(math.asin(max(-1.0, min(1.0, r[2, 0])))), 1),  # jaws up (+), down (-)
+                        round(math.degrees(math.atan2(r[2, 1], r[2, 2])), 1),  # rolled about its own length
+                        round(math.degrees(math.atan2(r[1, 0], r[0, 0])), 1)],  # turned about the vertical
+                round(closed, 4))
 
-    tcp, fingers = {}, {}
+    tcp, fingers, press = {}, {}, {}
     if links:
         joints = sim.robot_joints()
+        try:
+            targets = sim.robot_targets()
+        except Exception:  # noqa: BLE001
+            targets = None
         for side in ("left", "right"):
             g = links[side]["gripper"]
             tcp[side] = mm(g[:3, 3] + g[:3, :3] @ np.array([0.0, 0.0, 0.134]))
             fingers[side] = [round(joints[side].get(j, 0.0) * 1000, 2) for j in ("joint7", "joint8")]
+            if targets:  # N each finger's drive pushes inward with
+                press[side] = [round((targets[side][j] - joints[side][j]) * FINGER_K, 2) for j in ("joint7", "joint8")]
     pairs = sorted({tuple(sorted(t)) for t in TRACK.view["touch"]})
-    tongs = {n: (mm(states[n].pos), tilt(states[n].quat_xyzw),
-                 [round(states[n].joints.get(j, 0.0), 3) for j in ("arm_l", "arm_r")])
-             for n in ("purple_tongs", "black_tongs")}
+    tongs = {n: lay(states[n]) for n in ("purple_tongs", "black_tongs")}
+    food = {c: mm(states[c].pos) for c in ("plain_1", "almond_1")}
     print(f"[trace] step {TRACK.steps} t {sim.t:.2f} score {TRACK.score():.2f} tcp {tcp} fingers {fingers} "
-          f"tongs {tongs} plain {[mm(states[c].pos) for c in PLAIN]} plate {mm(states['plate'].pos)} "
+          f"press {press} tongs {tongs} food {food} plate {mm(states['plate'].pos)} "
           f"new carriers {sorted(TRACK.carriers - set(NUT))} carried {sorted(TRACK.carried)} "
           f"handled {sorted(TRACK.handled)} home {TRACK.view['home']} still {TRACK.view['still']} "
           f"clear {TRACK.view['clear']} touch {pairs}", file=sys.stderr, flush=True)
@@ -502,118 +557,146 @@ def distance(objects):
 
 
 # --- demo -------------------------------------------------------------------------------------------------------------
-PAD_TIP = 0.013  # pad tips below the TCP
-PADS_OVER = 0.001  # pad tips this far above the handle's lower edge (the board is just below it)
-PINCH = 0.004  # fingers commanded this far past where the jaws meet the croissant
+FINGER_K = 5000.0  # N/m: the gripper's finger drive (yam_arena.constants.GRIPPER)
+PAD_TIP = 0.0128  # a pad's tip below the TCP
+PAD_SHOULDER = 0.013  # a pad's flat face is widest this far ahead of the TCP: it meets a handle there
+PAD_CLEAR = 0.0015  # pad tips stay this far above what the tongs lie on
+PADS_UNDER = 0.003  # ... and go this far below the handle's lower edge where there is room
+GRIP_X = 0.145  # the TCP from the bent end: the pads then meet the handles where the tongs balance
+HOLD_ANGLE = 0.040  # rad each arm is squeezed in to carry the tongs with their jaws open
+GRASP_ANGLE = 0.061  # rad each arm is in when both jaws meet a croissant lying between them
+BELLY = 0.0028  # a croissant is a crescent: the jaws meet it together with their centre line this far toward its belly
+CARRY_FORCE = 12.0  # N each pad presses its handle with while the jaws hold a croissant
 TRAVEL = 0.095
 
 
 def half_span(closed: float) -> float:
-    """Half the distance across the two handles where a gripper's pads meet them (the hidden flats' widest point),
-    each arm ``closed`` rad in from free."""
-    size, centre, r = _flat(1, TONG_FREE - closed, 0.0)
-    signs = np.array([[sx, 1.0, 0.0] for sx in (-1, 1)])
-    return float((centre + (signs * size / 2) @ r.T)[:, 1].max())
+    """Half the distance across the two handles where a gripper's pads meet them, each arm ``closed`` rad in from
+    free."""
+    size, centre, r = _sleeve(1, TONG_FREE - closed, LEVEL)
+    n = r[:, 1]
+    face = centre + n * size[1] / 2
+    return float(face[1] - n[0] * (GRIP_X + PAD_SHOULDER - face[0]) / n[1])
 
 
 def jaw_gap(closed: float) -> float:
-    """The gap between the jaws' middle plates, each arm ``closed`` rad in from free."""
-    return 2 * (PIVOT[1] + (JAW_X - PIVOT[0]) * math.sin(TONG_FREE - closed))
+    """The gap between the middles of the jaws' middle plates, each arm ``closed`` rad in from free."""
+    a = TONG_FREE - closed
+    return 2 * (PIVOT[1] * math.cos(a) + (JAW_X - PIVOT[0]) * math.sin(a))
 
 
 def closed_for(gap: float) -> float:
     """How far in (rad) each arm is with the jaws' middle plates ``gap`` apart."""
-    return TONG_FREE - math.asin((gap / 2 - PIVOT[1]) / (JAW_X - PIVOT[0]))
+    lo, hi = -TONG_SPREAD, TONG_SHUT
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if jaw_gap(mid) > gap else (lo, mid)
+    return (lo + hi) / 2
+
+
+def spring_force(closed: float) -> float:
+    """N the tongs' spring pushes back on each pad with, each arm ``closed`` rad in from free."""
+    return TONG_SPRING * 2 * closed / (GRIP_X + PAD_SHOULDER - PIVOT[0])
+
+
+def _fingers(closed: float, press: float | None = None) -> float:
+    """The finger target that holds each arm ``closed`` rad in from free against ``press`` N on each pad (default:
+    the tongs' own spring)."""
+    press = spring_force(closed) if press is None else press
+    return -(half_span(closed) - press / FINGER_K)
 
 
 def lying(rise: float) -> tuple[float, float]:
-    """For tongs lying with their jaws' heels ``rise`` above the bend's surface: (the handle's lower edge at GRIP_X,
-    the lower edge of the jaws' middle plates at their near end), both above that surface."""
-    tilt = _tilt(rise)
-    low = (JAW_X - JAW_MID / 2 - PIVOT[0]) * math.sin(tilt) - JAW_DROP * math.cos(tilt)
-    return (GRIP_X - PIVOT[0]) * math.sin(tilt) - (SLEEVE_H - STRIP_H) / 2, low
+    """For tongs lying with their jaws' heels ``rise`` above the surface under the bent end: (the handle's lower edge
+    where the pads meet it, the jaws' heels), both above that surface."""
+    tilt, up = _lie(rise)
+    return up + (GRIP_X + PAD_SHOULDER - PIVOT[0]) * math.sin(tilt) - SLEEVE_DROP * math.cos(tilt), rise
 
 
 def _taking(which: str):
-    """Where and how a gripper takes a pair of tongs: (TCP xy, TCP height above the table, how far the jaws' lower
-    edge hangs below the TCP while they are held)."""
+    """Where and how a gripper takes a pair of tongs: (TCP xy, TCP height above the table, how far the jaws' heels
+    hang below the TCP while they are held)."""
     purple = which == "purple_tongs"
     bend_xy = PURPLE_BEND_XY if purple else BLACK_BEND_XY
     surface = PURPLE_BOARD[2] if purple else 0.0  # what the bent end lies on, above the table
-    handle, jaws = lying(0.0 if purple else BOARD[2])
-    grip_z = surface + LIFT + handle + PADS_OVER + PAD_TIP
-    return (bend_xy[0] + GRIP_X, bend_xy[1]), grip_z, grip_z - (surface + LIFT + jaws)
+    handle, heels = lying(0.0 if purple else BOARD[2])
+    grip_z = surface + max(handle - PADS_UNDER, PAD_CLEAR) + PAD_TIP
+    return (bend_xy[0] + GRIP_X, bend_xy[1]), grip_z, grip_z - (surface + heels)
 
 
-def _fingers(closed: float, tighter: float = 0.0002) -> float:
-    """The finger target that squeezes each arm ``closed`` rad in from free."""
-    return -(half_span(closed) - tighter)
+def _at(xy, z):
+    return (float(xy[0]), float(xy[1]), TOP + z)
 
 
 def serve_plan(which: str = "purple_tongs") -> list[Waypoint]:
-    """Waypoints that take a pair of tongs with a firm squeeze of its handle, carry it over the nearer plain
-    croissant, ease the squeeze so the jaws open, lower them either side of it, squeeze, lift it across to the plate,
-    let it down, and lay the tongs back where they were."""
-    take, grip_z, jaw_below = _taking(which)
+    """Waypoints that take a pair of tongs by squeezing its handle, carry it with open jaws over the nearer plain
+    croissant, lower the jaws either side of it, squeeze, lift it across to the plate, let it down, and lay the
+    tongs back where they were."""
+    take, grip_z, heels = _taking(which)
     ahead = JAW_X - GRIP_X  # the jaws' middle ahead of the TCP
-    pick = (ROW[0] - ahead, PLAIN_BOARD_XY[1])
-    drop = (PLATE_XY[0] - ahead, PLATE_XY[1])
-    firm, hold = _fingers(FIRM_ANGLE), _fingers(HOLD_ANGLE)
-    grasp = _fingers(closed_for(CROISSANT.width), PINCH)
-    pick_z = BOARD[2] + 0.004 + jaw_below  # jaws 4 mm above the board
-    drop_z = PLATE_T + 0.015 + jaw_below  # croissant 11 mm above the plate's well
+    pick = (ROW[0] - ahead, PLAIN_BOARD_XY[1] + SIDE * BELLY)
+    drop = (PLATE_XY[0] - ahead, PLATE_XY[1] + SIDE * BELLY)
+    hold, grasp = _fingers(HOLD_ANGLE), _fingers(GRASP_ANGLE, CARRY_FORCE)
+    pick_z = BOARD[2] + 0.004 + heels  # jaws 4 mm above the board
+    drop_z = PLATE_T + 0.015 + heels  # croissant 11 mm above the plate's well
     back_z = grip_z + 0.002
-
-    def at(xy, z):
-        return (float(xy[0]), float(xy[1]), TOP + z)
-
     return [
-        Waypoint(1.5, at(take, TRAVEL), FINGER_OPEN, "over the tongs"),
-        Waypoint(1.5, at(take, grip_z), FINGER_OPEN, "down beside the handle"),
-        Waypoint(1.0, at(take, grip_z), firm, "squeeze the handle"),
-        Waypoint(0.5, at(take, grip_z), firm, "settle"),
-        Waypoint(1.5, at(take, TRAVEL), firm, "lift the tongs"),
-        Waypoint(2.5, at(pick, TRAVEL), firm, "over the plain croissant"),
-        Waypoint(0.8, at(pick, TRAVEL), hold, "ease the squeeze: jaws open"),
-        Waypoint(0.4, at(pick, TRAVEL), hold, "settle"),
-        Waypoint(2.0, at(pick, pick_z), hold, "jaws down either side of it"),
-        Waypoint(0.5, at(pick, pick_z), hold, "settle"),
-        Waypoint(1.2, at(pick, pick_z), grasp, "squeeze the jaws onto it"),
-        Waypoint(0.5, at(pick, pick_z), grasp, "settle"),
-        Waypoint(1.5, at(pick, pick_z + 0.050), grasp, "lift it"),
-        Waypoint(2.5, at(drop, pick_z + 0.050), grasp, "across to the plate"),
-        Waypoint(1.5, at(drop, drop_z), grasp, "down over the plate"),
-        Waypoint(0.8, at(drop, drop_z), hold, "let it go"),
-        Waypoint(0.5, at(drop, drop_z), hold, "settle"),
-        Waypoint(1.2, at(drop, TRAVEL), hold, "up"),
-        Waypoint(0.6, at(drop, TRAVEL), firm, "firm squeeze again"),
-        Waypoint(2.5, at(take, TRAVEL), firm, "back over where the tongs lay"),
-        Waypoint(1.5, at(take, back_z), firm, "lower the tongs"),
-        Waypoint(0.8, at(take, back_z), FINGER_OPEN, "let go"),
-        Waypoint(1.2, at(take, 0.150), FINGER_OPEN, "up and clear"),
-        Waypoint(3.0, at(take, 0.150), FINGER_OPEN, "wait"),
+        Waypoint(1.5, _at(take, TRAVEL), FINGER_OPEN, "over the tongs"),
+        Waypoint(1.5, _at(take, grip_z), FINGER_OPEN, "down beside the handle"),
+        Waypoint(1.0, _at(take, grip_z), hold, "squeeze the handle"),
+        Waypoint(0.5, _at(take, grip_z), hold, "settle"),
+        Waypoint(1.5, _at(take, TRAVEL), hold, "lift the tongs"),
+        Waypoint(2.5, _at(pick, TRAVEL), hold, "over the plain croissant"),
+        Waypoint(2.0, _at(pick, pick_z), hold, "jaws down either side of it"),
+        Waypoint(0.5, _at(pick, pick_z), hold, "settle"),
+        Waypoint(1.2, _at(pick, pick_z), grasp, "squeeze the jaws onto it"),
+        Waypoint(0.5, _at(pick, pick_z), grasp, "settle"),
+        Waypoint(1.5, _at(pick, pick_z + 0.050), grasp, "lift it"),
+        Waypoint(2.5, _at(drop, pick_z + 0.050), grasp, "across to the plate"),
+        Waypoint(1.5, _at(drop, drop_z), grasp, "down over the plate"),
+        Waypoint(0.8, _at(drop, drop_z), hold, "let it go"),
+        Waypoint(0.5, _at(drop, drop_z), hold, "settle"),
+        Waypoint(1.2, _at(drop, TRAVEL), hold, "up"),
+        Waypoint(2.5, _at(take, TRAVEL), hold, "back over where the tongs lay"),
+        Waypoint(1.5, _at(take, back_z), hold, "lower the tongs"),
+        Waypoint(0.8, _at(take, back_z), FINGER_OPEN, "let go"),
+        Waypoint(1.2, _at(take, 0.150), FINGER_OPEN, "up and clear"),
+        Waypoint(3.0, _at(take, 0.150), FINGER_OPEN, "wait"),
     ]
 
 
-def probe_plan(which: str = "purple_tongs") -> list[Waypoint]:
-    """A test of the hold, not a serve: take the tongs with a firm squeeze, lift them, then ease the squeeze in
-    steps. The trace shows at which squeeze they start to slip in the pads."""
-    take, grip_z, _ = _taking(which)
-
-    def at(z):
-        return (float(take[0]), float(take[1]), TOP + z)
-
-    plan = [
-        Waypoint(1.5, at(TRAVEL), FINGER_OPEN, "over the tongs"),
-        Waypoint(1.5, at(grip_z), FINGER_OPEN, "down beside the handle"),
-        Waypoint(1.0, at(grip_z), _fingers(FIRM_ANGLE), "squeeze the handle"),
-        Waypoint(0.5, at(grip_z), _fingers(FIRM_ANGLE), "settle"),
-        Waypoint(1.5, at(TRAVEL), _fingers(FIRM_ANGLE), "lift the tongs"),
+def probe_plans() -> dict[str, list[Waypoint]]:
+    """Two ten-second tests of the hold, not a serve. The purple board's arm takes the purple tongs, carries them
+    over the nearer plain croissant and lowers the open jaws round it. The other arm squeezes the black tongs where
+    they lie, so their jaws shut on the almond croissant between them, lifts it, shifts it and lets it down."""
+    take, grip_z, heels = _taking("purple_tongs")
+    pick = (ROW[0] - (JAW_X - GRIP_X), PLAIN_BOARD_XY[1] + SIDE * BELLY)
+    hold, grasp = _fingers(HOLD_ANGLE), _fingers(GRASP_ANGLE, CARRY_FORCE)
+    first = [
+        Waypoint(1.3, _at(take, TRAVEL), FINGER_OPEN, "over the tongs"),
+        Waypoint(1.4, _at(take, grip_z), FINGER_OPEN, "down beside the handle"),
+        Waypoint(1.0, _at(take, grip_z), hold, "squeeze the handle"),
+        Waypoint(0.5, _at(take, grip_z), hold, "settle"),
+        Waypoint(1.3, _at(take, TRAVEL), hold, "lift the tongs"),
+        Waypoint(2.3, _at(pick, TRAVEL), hold, "over the plain croissant"),
+        Waypoint(1.7, _at(pick, BOARD[2] + 0.004 + heels), hold, "jaws down either side of it"),
+        Waypoint(0.5, _at(pick, BOARD[2] + 0.004 + heels), hold, "settle"),
     ]
-    for closed in (0.040, 0.030, 0.022, 0.015, 0.010):
-        plan.append(Waypoint(0.3, at(TRAVEL), _fingers(closed), f"ease to {closed:.3f} rad"))
-        plan.append(Waypoint(0.4, at(TRAVEL), _fingers(closed), "hold"))
-    return plan
+    take, grip_z, heels = _taking("black_tongs")
+    side = (take[0], take[1] + SIDE * 0.030)
+    second = [
+        Waypoint(1.5, _at(take, TRAVEL), FINGER_OPEN, "over the black tongs"),
+        Waypoint(1.5, _at(take, grip_z), FINGER_OPEN, "down beside the handle"),
+        Waypoint(1.2, _at(take, grip_z), grasp, "squeeze: the jaws shut on the almond croissant"),
+        Waypoint(0.5, _at(take, grip_z), grasp, "settle"),
+        Waypoint(1.3, _at(take, grip_z + 0.050), grasp, "lift it"),
+        Waypoint(1.2, _at(side, grip_z + 0.050), grasp, "shift it"),
+        Waypoint(0.5, _at(side, grip_z + 0.050), grasp, "hold"),
+        Waypoint(1.0, _at(side, grip_z + 0.005), grasp, "lower it"),
+        Waypoint(0.8, _at(side, grip_z + 0.005), hold, "let it go"),
+        Waypoint(0.5, _at(side, grip_z + 0.005), hold, "settle"),
+    ]
+    return {PURPLE_ARM: first, BLACK_ARM: second}
 
 
 PURPLE_ARM = "right" if SIDE > 0 else "left"  # the arm on the purple board's side
@@ -628,5 +711,5 @@ def demo():
     if mode == "black":
         return {BLACK_ARM: serve_plan("black_tongs")}
     if mode == "probe":
-        return {PURPLE_ARM: probe_plan("purple_tongs")}
+        return probe_plans()
     return {PURPLE_ARM: serve_plan("purple_tongs")}

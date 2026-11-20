@@ -51,8 +51,7 @@ def tongs(name: str, jaws_xy, jaw_low: float, closed: float = 0.0, level: bool =
     edge ``jaw_low`` above the table and each arm ``closed`` rad in from free."""
     spec = T.SPECS[name]
     low = min(p.low[2] for p in T.pieces(name, spec.state()) if p.tag.endswith(":jaw")) - spec.pos[2]
-    pos = (jaws_xy[0] - T.JAW_X, jaws_xy[1], TOP + jaw_low - low)
-    return spec.state(joints={"arm_l": -closed, "arm_r": -closed}, pos=pos)
+    return T.tong_state(name, closed, (jaws_xy[0] - T.JAW_X, jaws_xy[1], TOP + jaw_low - low))
 
 
 def hand(xyz, tag: str = "tip_left", size: float = 0.02) -> list[geo.Piece]:
@@ -62,7 +61,7 @@ def hand(xyz, tag: str = "tip_left", size: float = 0.02) -> list[geo.Piece]:
 
 
 GX = T.GRIP_X
-GRIP = T.closed_for(T.CROISSANT.width) + 0.004  # jaws pressed onto the croissant
+GRIP = T.GRASP_ANGLE + 0.004  # jaws pressed onto the croissant
 P1 = (T.ROW[0], T.PLAIN_BOARD_XY[1])
 P2 = (T.ROW[1], T.PLAIN_BOARD_XY[1])
 ON_PLATE = T.PLATE_T + 0.0005
@@ -118,7 +117,7 @@ def scoring_cases() -> None:
 
     tr = T.Tracker()
     st = start()
-    st["purple_tongs"] = tongs("purple_tongs", P1, T.BOARD[2] + 0.004, T.closed_for(T.CROISSANT.width) - 0.02)
+    st["purple_tongs"] = tongs("purple_tongs", P1, T.BOARD[2] + 0.004, T.HOLD_ANGLE)
     run(tr, st, FAR, 10)
     check("open jaws round a croissant that still lies on its board: not carried, 0", tr.score(), 0.0)
 
@@ -380,8 +379,9 @@ def demo_cases() -> None:
     t_drop = ends[labels.index("let it go")]
     t_back = ends[labels.index("let go")]
     ahead = T.JAW_X - GX
+    belly = T.SIDE * T.BELLY
     rest = T.SPECS["purple_tongs"].state()
-    jaw_rest = min(p.low[2] for p in T.pieces("purple_tongs", rest) if p.tag.endswith(":jaw")) - TOP
+    jaw_rest = min(p.low[2] for p in T.pieces("purple_tongs", rest) if p.tag.endswith(":jaw")) - TOP - T.LIFT
     grip_tcp = plan[arm_name][1].pos[2] - TOP
     tr = T.Tracker()
     st = start()
@@ -396,24 +396,26 @@ def demo_cases() -> None:
         arms = {f"{arm_name}_arm": T.arm_pieces(links)}
         x, y, z = tcp[i][0], tcp[i][1], tcp[i][2] - TOP
         if t_take <= t < t_back:
-            closed = closed_at(abs(fingers[i]))
+            closed = min(closed_at(abs(fingers[i])), T.GRASP_ANGLE + 0.001)  # the croissant stops the jaws
             jaw_low = z - (grip_tcp - jaw_rest)
             st["purple_tongs"] = tongs("purple_tongs", (x + ahead, y), jaw_low, closed)
             if t_grasp <= t < t_drop:
                 riding = True
-                st["plain_1"] = croissant("plain_1", (x + ahead, y), jaw_low - 0.004)
+                st["plain_1"] = croissant("plain_1", (x + ahead, y - belly), jaw_low - 0.004)
             elif riding:
                 riding = False
-                st["plain_1"] = croissant("plain_1", (x + ahead, y), ON_PLATE)
+                st["plain_1"] = croissant("plain_1", (x + ahead, y - belly), ON_PLATE)
         elif t >= t_back:
             st["purple_tongs"] = rest
         tr.update(dict(st), arms)
         for n in ("plain_1", "plain_2", "almond_1", "almond_2", "black_tongs", "board_almond", "plate", "board_plain"):
             worst_clear = min(worst_clear, geo.gap(arms[f"{arm_name}_arm"], T.pieces(n, st[n]), reach=0.03))
         if k == int(round(t_settle / dt)) - 2:
-            gap_side = (T.jaw_gap(closed) - T.CROISSANT.width) / 2
-            check(f"jaws straddle the croissant with room each side before closing ({gap_side * 1000:.1f} mm)",
-                  gap_side >= 0.007, True)
+            food = T.pieces("plain_1", st["plain_1"])
+            jaws = [p for p in T.pieces("purple_tongs", st["purple_tongs"]) if ":jaw" in p.tag]
+            room = [geo.gap(food, [p for p in jaws if p.tag.startswith(a)], reach=0.03) for a in ("arm_l", "arm_r")]
+            check(f"open jaws straddle the croissant with 4 mm or more each side ({room[0] * 1000:.1f}, "
+                  f"{room[1] * 1000:.1f} mm)", min(room) >= 0.004, True)
         if k == int(round(t_drop / dt)) - 2:
             low = min(p.low[2] for p in T.pieces("plain_1", st["plain_1"])) - TOP
             check(f"croissant let go a little above the plate's well ({(low - T.PLATE_T) * 1000:.1f} mm)",
@@ -424,6 +426,45 @@ def demo_cases() -> None:
     check("replayed demo scores 1.0", tr.score(), 1.0)
     check(f"the arm stays 5 mm or more from the food, the other tongs, the boards and the plate ({worst_clear * 1000:.1f} mm)",
           worst_clear >= 0.005, True)
+
+
+def jaws_on(closed: float, along: float = 0.0) -> dict[str, float]:
+    """The gap between each purple jaw and plain_1 on its board, the jaws 4 mm above the board round it."""
+    st = tongs("purple_tongs", (P1[0] + along, P1[1] + T.SIDE * T.BELLY), T.BOARD[2] + 0.004, closed)
+    food = T.pieces("plain_1", croissant("plain_1", P1, T.BOARD[2]))
+    jaws = [p for p in T.pieces("purple_tongs", st) if ":jaw" in p.tag]
+    return {a: geo.gap(food, [p for p in jaws if p.tag.startswith(a)], reach=0.03) for a in ("arm_l", "arm_r")}
+
+
+def hold_cases() -> None:
+    """The numbers the scripted demo rests on: where the pads meet the handles, how hard the spring holds, where
+    the jaws meet the croissant."""
+    spec = T.PURPLE_TONGS
+    poses = spec.state_poses(T.tong_state("purple_tongs", T.HOLD_ANGLE))
+    hinge = spec.joints[0]
+    centres = [poses["base"][0] + poses["base"][1] @ np.asarray(spec.centre),
+               poses["arm_r"][0] + poses["arm_r"][1] @ (np.asarray(hinge.centre) - hinge.origin)]
+    balance = float(np.mean(centres, axis=0)[0] - spec.pos[0])
+    check(f"the pads meet the handles within 3 mm of where the tongs balance ({balance * 1000:.1f} mm from the bend)",
+          abs(balance - (GX + T.PAD_SHOULDER)) <= 0.003, True)
+    weight = T.TONG_MASS * 9.81
+    grip = (T.SLEEVE_GRIP[0] + 0.5) / 2  # the simulator averages the coating's friction with the pads' 0.5
+    hold = 2 * grip * T.spring_force(T.HOLD_ANGLE)
+    check(f"squeezed for carrying, the pads' friction holds twice the tongs' weight ({hold:.2f} N against "
+          f"{weight:.2f} N)", hold >= 2 * weight, True)
+    lo, hi = 0.0, T.TONG_SHUT
+    for _ in range(26):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if min(jaws_on(mid).values()) > 1e-5 else (lo, mid)
+    check(f"GRASP_ANGLE is where the jaws meet the croissant ({lo:.4f} rad)", abs(lo - T.GRASP_ANGLE) <= 0.002, True)
+    both = jaws_on(T.GRASP_ANGLE + 0.002)
+    check("both jaws are on the croissant there", max(both.values()) <= T.TOUCH, True)
+    carry = T.CARRY_FORCE - T.spring_force(T.GRASP_ANGLE)
+    pinch = carry * (GX + T.PAD_SHOULDER - T.PIVOT[0]) / (T.JAW_X - T.PIVOT[0])
+    check(f"the jaws pinch the croissant with a few newtons ({pinch:.1f} N each)", 2.0 <= pinch <= 8.0, True)
+    span = max(abs(T._fingers(T.HOLD_ANGLE)), abs(T._fingers(0.0)))
+    check(f"the open pads pass 8 mm or more outside the handles ({(abs(T.FINGER_OPEN) - span) * 1000:.1f} mm)",
+          abs(T.FINGER_OPEN) - span >= 0.008, True)
 
 
 def geometry_cases() -> None:
@@ -478,6 +519,7 @@ if __name__ == "__main__":
     scoring_cases()
     unmeasured_cases()
     text_cases()
+    hold_cases()
     demo_cases()
     black_demo_cases()
     if not os.environ.get("TASK_TEST_CHILD"):

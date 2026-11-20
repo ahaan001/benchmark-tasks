@@ -7,8 +7,8 @@ your task file and import it there:
     import parts  # noqa: E402
 
 This is the parts kit of the accepted task put-the-tongs-away-in-the-cutlery-tray, extended with turned boxes,
-convex hulls (:func:`hull`), drawn-only meshes (:func:`mesh`), shapes that collide without being drawn, and a
-friction per shape.
+convex hulls (:func:`hull`), drawn-only meshes (:func:`mesh`), shapes that collide without being drawn, a friction
+and a contact patch radius per shape, and a mass centre per body.
 
 A :class:`Part` goes in ``OBJECTS`` like a Box. It is a rigid body made of shapes, each with its own colour, given in
 the part's frame (origin at ``pos``, turned by ``yaw``). ``mass=None`` fixes the part in place; a mass makes it loose.
@@ -105,6 +105,7 @@ class Shape:
     collide: bool = True  # False: drawn, nothing collides with it
     visible: bool = True  # False: collides, not drawn
     friction: tuple[float, float] | None = None  # static, dynamic; None: the part's
+    patch: float = 0.0  # radius (m) of the contact patch that resists twisting about a contact's normal; 0: none
 
     @property
     def rotation(self) -> np.ndarray:
@@ -136,31 +137,34 @@ class Shape:
         return (p.max(axis=0) + p.min(axis=0)) / 2
 
 
-def box(size, at=(0.0, 0.0, 0.0), color=GREY, rot=IDENTITY, collide=True, visible=True, friction=None) -> Shape:
+def box(size, at=(0.0, 0.0, 0.0), color=GREY, rot=IDENTITY, collide=True, visible=True, friction=None,
+        patch=0.0) -> Shape:
     return Shape("box", tuple(float(s) for s in size), tuple(float(a) for a in at), tuple(color),
-                 rot=tuple(float(v) for v in rot), collide=collide, visible=visible, friction=friction)
+                 rot=tuple(float(v) for v in rot), collide=collide, visible=visible, friction=friction,
+                 patch=float(patch))
 
 
 def cylinder(radius, height, at=(0.0, 0.0, 0.0), color=GREY, axis="z", collide=True, visible=True,
-             friction=None) -> Shape:
+             friction=None, patch=0.0) -> Shape:
     if axis not in ("x", "y", "z"):
         raise ValueError(f"cylinder axis must be 'x', 'y' or 'z', got {axis!r}")
     return Shape("cylinder", (float(radius), float(height), 0.0), tuple(float(a) for a in at), tuple(color), axis,
-                 collide=collide, visible=visible, friction=friction)
+                 collide=collide, visible=visible, friction=friction, patch=float(patch))
 
 
 def _tuples(a, kind=float) -> tuple:
     return tuple(tuple(kind(v) for v in row) for row in np.asarray(a))
 
 
-def hull(points, faces=(), at=(0.0, 0.0, 0.0), color=GREY, rot=IDENTITY, visible=False, friction=None) -> Shape:
+def hull(points, faces=(), at=(0.0, 0.0, 0.0), color=GREY, rot=IDENTITY, visible=False, friction=None,
+         patch=0.0) -> Shape:
     """A convex collider: the convex hull of ``points`` (at most 64). ``faces`` (triangles) are needed only to draw
     it; by default it is not drawn and a :func:`mesh` gives the look."""
     if not 4 <= len(points) <= 64:
         raise ValueError(f"a hull needs 4 to 64 points, got {len(points)}")
     return Shape("hull", (0.0, 0.0, 0.0), tuple(float(a) for a in at), tuple(color), rot=tuple(float(v) for v in rot),
                  points=_tuples(points), faces=_tuples(faces, int) if len(faces) else (), visible=visible,
-                 friction=friction)
+                 friction=friction, patch=float(patch))
 
 
 def mesh(points, faces, normals=(), at=(0.0, 0.0, 0.0), color=GREY, rot=IDENTITY) -> Shape:
@@ -174,7 +178,8 @@ def mesh(points, faces, normals=(), at=(0.0, 0.0, 0.0), color=GREY, rot=IDENTITY
 class Hinge:
     """A revolute joint: the link (``shapes``, ``mass``) turns about ``axis`` (part frame) through ``pivot``.
     Position 0 is the pose the shapes are given in; ``lower``/``upper`` (rad) bound it. ``spring`` (N m/rad) pulls it
-    back to 0 (or to a target set with :meth:`Sim.set_target`); ``damping`` (N m s/rad) resists turning."""
+    back to 0 (or to a target set with :meth:`Sim.set_target`); ``damping`` (N m s/rad) resists turning. ``centre``
+    is the link's mass centre in the part frame at position 0 (default: worked out from its shapes)."""
 
     name: str
     shapes: tuple[Shape, ...]
@@ -186,6 +191,7 @@ class Hinge:
     spring: float = 0.0
     damping: float = 0.01
     max_effort: float = 50.0  # N m the spring/drive may exert
+    centre: tuple[float, float, float] | None = None
 
     @property
     def origin(self) -> np.ndarray:
@@ -241,12 +247,14 @@ class PartState(ObjectState):
 @dataclass(frozen=True)
 class Part(task_file.Box):
     """A rigid part made of ``shapes`` (part frame; origin at ``pos``, turned by ``yaw``), with optional ``joints``.
-    ``mass=None``: fixed in place. ``size`` and ``color`` are derived (the starting box around every shape, the first
-    shape's colour) so offline tools that read a Box still see something sensible."""
+    ``mass=None``: fixed in place. ``centre`` is the body's mass centre in the part frame (default: worked out from
+    its shapes). ``size`` and ``color`` are derived (the starting box around every shape, the first shape's colour)
+    so offline tools that read a Box still see something sensible."""
 
     shapes: tuple[Shape, ...] = ()
     joints: tuple[Joint, ...] = ()
     friction: tuple[float, float] = FRICTION
+    centre: tuple[float, float, float] | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "shapes", tuple(self.shapes))
@@ -413,6 +421,16 @@ class Sim:
             out[side] = {n: float(q[i]) for i, n in enumerate(asset.joint_names)}
         return out
 
+    def robot_targets(self) -> dict[str, dict[str, float]]:
+        """Each arm's commanded joint positions, as :meth:`robot_joints`."""
+        base = self.env.unwrapped
+        out = {}
+        for side, key in (("left", "left_robot"), ("right", "right_robot")):
+            asset = base.scene[key]
+            q = _np(asset.data.joint_pos_target)[0]
+            out[side] = {n: float(q[i]) for i, n in enumerate(asset.joint_names)}
+        return out
+
     def robot_links(self, names=None) -> dict[str, dict[str, np.ndarray]]:
         """Each arm's link poses as 4x4 matrices in the scene frame: {"left": {link: pose}, "right": {...}}."""
         base = self.env.unwrapped
@@ -516,13 +534,16 @@ def _author(part: Part, root_path: str, translation, orientation):
             cfg.func(looks[color], cfg)
         return looks[color]
 
-    def body(path: str, mass: float | None):
+    def body(path: str, mass: float | None, centre=None):
         prim = stage.GetPrimAtPath(path)
         if mass is None:
             return
         UsdPhysics.RigidBodyAPI.Apply(prim)
         PhysxSchema.PhysxRigidBodyAPI.Apply(prim).CreateMaxDepenetrationVelocityAttr(MAX_DEPENETRATION)
-        UsdPhysics.MassAPI.Apply(prim).CreateMassAttr(float(mass))
+        api = UsdPhysics.MassAPI.Apply(prim)
+        api.CreateMassAttr(float(mass))
+        if centre is not None:
+            api.CreateCenterOfMassAttr(Gf.Vec3f(*(float(v) for v in centre)))
 
     def colliders(path: str, origin, shapes):
         for i, s in enumerate(shapes):
@@ -534,10 +555,12 @@ def _author(part: Part, root_path: str, translation, orientation):
                 col = PhysxSchema.PhysxCollisionAPI.Apply(prim)
                 col.CreateContactOffsetAttr(CONTACT_OFFSET)
                 col.CreateRestOffsetAttr(REST_OFFSET)
+                if s.patch > 0:
+                    col.CreateMinTorsionalPatchRadiusAttr(float(s.patch))
                 bind_physics_material(sp, grip(s.friction), stage=stage)
 
     if not part.joints:  # one rigid body (loose) or a static collider (fixed) at the root
-        body(root_path, part.mass)
+        body(root_path, part.mass, part.centre)
         colliders(root_path, np.zeros(3), part.shapes)
         return root
 
@@ -549,7 +572,9 @@ def _author(part: Part, root_path: str, translation, orientation):
     for name, origin, shapes in part.links:
         create_prim(f"{root_path}/{name}", "Xform", translation=tuple(float(v) for v in origin), stage=stage)
         j = next((j for j in part.joints if j.name == name), None)
-        body(f"{root_path}/{name}", j.mass if j else (part.mass or 1.0))
+        centre = j.centre if j else part.centre
+        body(f"{root_path}/{name}", j.mass if j else (part.mass or 1.0),
+             None if centre is None else np.asarray(centre, float) - origin)
         colliders(f"{root_path}/{name}", origin, shapes)
     UsdGeom.Scope.Define(stage, f"{root_path}/joints")
     if part.mass is None:  # fixed: the body is welded to the world where it was spawned
