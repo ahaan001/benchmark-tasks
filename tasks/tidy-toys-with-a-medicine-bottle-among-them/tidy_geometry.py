@@ -68,6 +68,7 @@ HASP = (0.020, 0.045, 0.002)  # width, length down the front, thickness (est)
 LOCK_Z = 0.085  # the lock's slot and dials, on the front (est)
 DIAL_R, DIAL_W, DIAL_PROUD = 0.0055, 0.008, 0.0012  # (est)
 DIAL_Y = (-0.018, -0.029, -0.040)  # beside the slot, toward the robot's right (est)
+DIAL_MARK = (0.0010, 0.0050, 0.0016)  # a black mark on each dial's rim at its code position, in place of numbers: it leaves the front as the dial turns
 BOX_XY = (0.33, -0.27)
 
 

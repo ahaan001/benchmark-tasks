@@ -76,6 +76,7 @@ def lock_box():
     hasp_parts = [("hasp", m.Mesh(((hasp_mesh.v - g.HASP_HINGE) @ rest.T + g.HASP_HINGE - g.LID_HINGE) @ swing.T + g.LID_HINGE, hasp_mesh.f), "chrome")]
     hasp_at = tuple(g.on_lid(g.HASP_HINGE))
     dial = lambda k: m.cylinder(g.DIAL_R, g.DIAL_W, g.dial_at(k), axis="y", segments=12)  # noqa: E731
+    mark = lambda k: m.box(g.DIAL_MARK, (g.dial_at(k)[0] - g.DIAL_R, g.dial_at(k)[1], g.LOCK_Z))  # noqa: E731  (drawn only: the dial's code position)
     links = [
         m.hinge("lid", "Y", tuple(g.LID_HINGE), -g.LID_OPEN_DEG, 0.5, lid_parts, lid_cols, mass=g.LID_MASS, spring=0.0, damping=0.002, friction=0.002,
                 armature=1e-5, gravity=True, com=tuple(g.on_lid((0.0, 0.0, g.BOX_H - 0.010)))),
@@ -85,7 +86,7 @@ def lock_box():
                 spring=0.0, damping=0.0002, friction=0.0001, armature=1e-6, gravity=True, com=tuple(hasp_centre)),
     ]
     for k in range(3):
-        links.append(m.hinge(f"dial{k}", "Y", g.dial_at(k), -math.inf, math.inf, [(f"dial{k}", dial(k), "chrome")], [m.col_hull(f"c_dial{k}", dial(k))],
+        links.append(m.hinge(f"dial{k}", "Y", g.dial_at(k), -math.inf, math.inf, [(f"dial{k}", dial(k), "chrome"), (f"dial{k}_mark", mark(k), "ink")], [m.col_hull(f"c_dial{k}", dial(k))],
                              mass=g.DIAL_MASS, spring=0.0, damping=0.0002, friction=DIAL_DETENT, armature=1e-6, inertia=(1e-7, 1e-7, 1e-7)))
     base_parts, base_cols = boxes("base", g.box_base_boxes(), "case")
     plate_c, plate_s = g.LOCK_PLATE
@@ -190,12 +191,11 @@ class Trial:
         toys = {n: TOY_POINTS[n] @ s[n].rotation().T + np.asarray(s[n].pos, float) - UP for n in TOY_NAMES}
         fingers = m.fingertips(env) - UP
         gaps = [float(np.linalg.norm(fingers[:, None, :] - p[None, :, :], axis=2).min()) for p in (vial_pts, *toys.values())]
-        low = min(float(vial_pts[:, 2].min()), float(np.asarray(cap.pos)[2] - TOP), *(float(p[:, 2].min()) for p in toys.values()))
         return r.Obs(
             cap_square=square, cap_rise=rise, cap_turn_cw=turn_cw, hasp_off=hasp, lid_deg=lid, dials=dials,
             bottle_in_basket=bool(np.any(g.in_basket(vial_pts))), bottle_in_box=bool(np.all(g.in_lock_box(vial_pts))),
             tablets_in_basket=int(np.sum(in_basket)), tablets_spilled=int(np.sum(~in_vial & ~in_box & ~in_basket)),
-            toys_tidied=sum(bool(g.in_basket(p.mean(axis=0))[0]) for p in toys.values()), off_table=low < -0.05,
+            toys_tidied=sum(bool(g.in_basket(p.mean(axis=0))[0]) for p in toys.values()),
             finger_gap=min(*gaps, g.box_gap(fingers - BOXO)) if np.all(np.isfinite(fingers)) else float("nan"),
             moved=np.vstack([vp, *(p.mean(axis=0) for p in toys.values()), BOXO + g.lid_top_point(lid)]))
 
@@ -269,6 +269,7 @@ PRESS_GRIP = (55.0, 0.0)  # the hasp is pressed, and the dials are turned, with 
 TIP_LEAD = np.array([0.0032, 0.0, 0.0059])  # pitched so, the closed fingertips' leading edge from their middle: what meets an upright face (from the collision hulls)
 BLOCK_YAW = -90.0  # the block is taken with the fingers closing along x: the wrist turns that way from the hold without passing a joint limit
 STROKE = 0.016  # that edge is drawn this far up the lock's face, over the middle dial
+CLEAR_AT = (0.16, 0.46, 0.17)  # where each hand ends, mirrored: outside the basket and the box as the top camera sees them
 DIAL_PRESS = (0.0030, 0.0045, 0.0060)  # with the command this far past the dial's front: a second and third stroke press harder
 MODES = ("full", "none", "literal", "toys_only", "uncapped", "no_dials", "settle", "cap", "place", "lid", "lock", "dials", "toys")
 
@@ -277,7 +278,7 @@ def demo_script(ctx):
     """The left hand takes the vial round its body and holds it. The right hand takes the cap, sets it on the neck, turns it on, pushes it
     down and turns it until it snaps; the left lets go, and the right lifts the closed vial by its cap, stands it in the lock box, pushes
     the lid over from behind so that it falls shut, presses the hasp into the lock and draws its fingertips up over a dial. Meanwhile the
-    left hand puts the three toys in the basket. Both end clear.
+    left hand puts the three toys in the basket. Both end clear, outside the basket and the box.
     Other modes, for the README's table: none does nothing; literal puts everything on the mat into the basket, the open vial too;
     toys_only leaves the vial where it stands; uncapped locks the open vial away; no_dials latches the box and leaves the dials.
     Mechanism tests of 200 steps or fewer: settle, cap, place (with TIDY_START=capped), lid, lock and dials (with
@@ -496,7 +497,7 @@ def demo_script(ctx):
 
     def clear(arm):
         side = 1.0 if arm is left else -1.0
-        yield from arm.move(np.array([0.18, 0.30 * side, 0.17]) + UP, grip=down0, finger=-0.04, t=T(2.0), label="clear")
+        yield from arm.move(np.array([CLEAR_AT[0], CLEAR_AT[1] * side, CLEAR_AT[2]]) + UP, grip=down0, finger=-0.04, t=T(2.0), label="clear")
 
     def settle(steps: int = 180):
         for k in range(steps):

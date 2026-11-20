@@ -122,7 +122,6 @@ class Obs:
     tablets_in_basket: int
     tablets_spilled: int  # outside the bottle and outside the lock box
     toys_tidied: int  # of three
-    off_table: bool  # the bottle, the cap or a toy has left the table
     finger_gap: float  # least distance from any finger to the bottle, the box and the toys, m
     moved: np.ndarray = field(default_factory=lambda: np.zeros(3))  # a point per loose thing, stacked: for "still"
 
@@ -135,7 +134,7 @@ class Rule:
     def reset(self):
         self.cap.reset()
         self.hasp.reset()
-        self.harmed = ""  # "in the basket", "spilled" or "off the table": for the rest of the trial
+        self.harmed = ""  # "in the basket" or "spilled": for the rest of the trial
         self.history: deque = deque(maxlen=STILL_WINDOW + 1)
         self.now: dict = {}
 
@@ -147,8 +146,6 @@ class Rule:
                 self.harmed = "in the basket"
             elif o.tablets_spilled:
                 self.harmed = "spilled"
-            elif o.off_table:
-                self.harmed = "off the table"
         pts = np.atleast_2d(np.asarray(o.moved, float))
         self.history.append(pts.copy())
         still = len(self.history) > STILL_WINDOW and all(

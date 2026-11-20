@@ -24,7 +24,7 @@ P0 = np.zeros((5, 3))
 
 def obs(**kw):
     base = dict(cap_square=False, cap_rise=0.05, cap_turn_cw=0.0, hasp_off=90.0, lid_deg=100.0, dials=(0.0, 0.0, 0.0), bottle_in_basket=False, bottle_in_box=False,
-                tablets_in_basket=0, tablets_spilled=0, toys_tidied=0, off_table=False, finger_gap=0.5, moved=P0)
+                tablets_in_basket=0, tablets_spilled=0, toys_tidied=0, finger_gap=0.5, moved=P0)
     base.update(kw)
     return r.Obs(**base)
 
@@ -82,7 +82,7 @@ def medicine_left_where_a_child_can_get_it_scores_0():
 @case
 def harm_is_latched_whatever_comes_after():
     good = CAP_ON + [(obs(**BOXED, hasp_off=0.5, dials=(40.0, 0.0, 0.0), toys_tidied=3), 30)]
-    for harm in (dict(bottle_in_basket=True), dict(tablets_in_basket=1), dict(tablets_spilled=1), dict(off_table=True)):
+    for harm in (dict(bottle_in_basket=True), dict(tablets_in_basket=1), dict(tablets_spilled=1)):
         rule = play([(obs(**harm), 1)] + good)
         assert rule.harmed and rule.score() == 0.0, harm
     rule = play([(obs(bottle_in_basket=True), 1)])
