@@ -62,9 +62,9 @@ def run_rules(seq, rules=None):
 def test_rules():
     cold = ((t.COLD[0] + t.COLD[1]) / 2, (t.COLD[2] + t.COLD[3]) / 2)
     r, held = run_rules([(snap(), 5)])
-    check("a strip just dropped in is curled", r.floating and held is not None and held[0][2] > t.PLATE_Z + t.FLOOR + t.TISSUE[2] / 2 + 0.0015)
+    check("a strip just dropped in is curled (a rule; nothing is moved for it)", r.floating and held is None)
     r, _ = run_rules([(snap(tip="on"), 5)])
-    check("pressed by the tips, it lies flat (not held)", not r.floating)
+    check("pressed by the tips, it lies flat", not r.floating)
     r, _ = run_rules([(snap(tip="on"), 5), (snap(), 5)])
     check("unpressed for under 0.3 s, it still lies flat", not r.floating)
     r, _ = run_rules([(snap(tip="on"), 5), (snap(), 7)])
@@ -92,9 +92,9 @@ def test_rules():
     check("... with the forceps in the well and the hands clear: 1.0", r.moment(clean) == 1.0)
     r, _ = run_rules([(snap(tip="on"), 5), (snap(mould=cold, tip="on"), int(7.0 / t.DT)), (snap(mould=cold), int(1.5 / t.DT) + 2)])
     check("forceps lifted on the cold block before the set: the bottom sets round the curl, 0", r.set_ and r.curl_set and not r.flat and r.moment(snap(mould=cold)) == 0.0)
-    r, _ = run_rules([(snap(), 25), (snap(mould_vel=(0.0, -0.02, 0.0)), 2), (snap(tip="on"), 5), (snap(mould=cold, tip="on"), int(8.0 / t.DT) + 2)])
-    check("curled and moved, then pressed again while molten: sets flat", r.drifted is False and r.set_ and r.flat)
-    r, _ = run_rules([(snap(), 25), (snap(mould_vel=(0.0, -0.02, 0.0)), 2), (snap(mould=cold), int(8.0 / t.DT) + 2), (snap(mould=cold, tip="on"), 5)])
+    r, _ = run_rules([(snap(), 25), (snap(mould=(0.30, 0.050)), 2), (snap(tip="on"), 5), (snap(mould=cold, tip="on"), int(8.0 / t.DT) + 2)])
+    check("curled and moved, then pressed again while molten: sets flat", r.set_ and r.flat)
+    r, _ = run_rules([(snap(), 25), (snap(mould=(0.30, 0.050)), 2), (snap(mould=cold), int(8.0 / t.DT) + 2), (snap(mould=cold, tip="on"), 5)])
     check("curled on the cold block: the curl is set, pressing afterwards does not help, 0", r.curl_set and r.set_ and not r.flat and r.moment(snap(mould=cold)) == 0.0)
     r, _ = run_rules([(snap(tip="on"), 5), (snap(tip="on"), int(20.0 / t.DT))])
     check("pressed but never moved to the cold block: never sets, 0", not r.set_ and r.moment(snap()) == 0.0)
@@ -130,7 +130,7 @@ class World:
         self.piece = self.mould + np.array([t.TISSUE_START[0], t.TISSUE_START[1], g.floor + g.tissue[2] / 2])
         self.piece_rot = np.eye(3)
         self.forceps = t.F_START.copy()
-        self.forceps_rot = np.eye(3)
+        self.forceps_rot = t.F_REST.copy()
         self.f_attach = None  # forceps pose in the left hand's frame while held
         self.m_attach = None  # mould offset from the right TCP while held
         self.held_pose = None
@@ -146,14 +146,14 @@ class World:
         g = t.GEOM
         lp, lr = tcp(ctx.left)
         lp = lp - np.array([0.0, 0.0, t.TOP])
-        grip_pt = self.forceps + self.forceps_rot @ np.array([0.0, 0.0, t.F_GRIP])
+        grip_pt = self.forceps + self.forceps_rot @ t.F_GRIP_LOCAL
         l_closed = ctx.left.cmd[6] < 0.5
         if self.f_attach is None and l_closed and np.linalg.norm(lp - grip_pt) < 0.006:
             self.f_attach = (lr.T @ (self.forceps - lp), lr.T @ self.forceps_rot)
         if self.f_attach is not None and not l_closed:
             self.f_attach = None
             if math.hypot(self.forceps[0] - t.WELL[0], self.forceps[1] - t.WELL[1]) < 0.006:
-                self.forceps, self.forceps_rot = np.array([t.WELL[0], t.WELL[1], g.plate_z + 0.001]), np.eye(3)
+                self.forceps, self.forceps_rot = t.F_START.copy(), t.F_REST.copy()
             else:
                 self.forceps = self.forceps.copy()
                 self.forceps[2] = g.plate_z + 0.002
@@ -162,7 +162,9 @@ class World:
             floor_z = self.mould[2] + g.floor if self.in_mould_xy(self.forceps) else g.plate_z
             rel = self.forceps - self.piece
             if abs(rel[0]) <= g.tissue[0] / 2 + 0.0005 and abs(rel[1]) <= g.tissue[1] / 2 + 0.0005:
-                floor_z = max(floor_z, self.piece[2] + g.tissue[2] / 2 - 0.0005)  # the tips rest on the piece, pressing it
+                corners = np.array([[a * 0.00075, b * 0.001, 0.0] for a in (-1, 1) for b in (-1, 1)]) @ self.forceps_rot.T
+                lift = -float(corners[:, 2].min())  # the tilted tips' lowest corner lies this far below their centre
+                floor_z = max(floor_z, self.piece[2] + g.tissue[2] / 2 - 0.0003 + lift)  # that corner rests on the strip, pressing it
             self.forceps[2] = max(self.forceps[2], floor_z)
         rp, _ = tcp(ctx.right)
         rp = rp - np.array([0.0, 0.0, t.TOP])

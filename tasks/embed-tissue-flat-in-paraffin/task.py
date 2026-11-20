@@ -7,9 +7,9 @@ dropped in near one end; warm embedding forceps stand tips-down in their heated 
 paraffin wax" and "Embedding orientation"; ARUP histology terms): lay the piece cut face down in the middle of the mould, press it flat with the
 forceps, move the mould onto the cold spot and keep pressing until the wax at the bottom has set and holds it. The cassette and the top-up follow.
 
-Declared rules (not fluid simulation): thin processed tissue curls; a strip the forceps' tips have not pressed for 0.3 s curls (one end 2 mm up, the
-strip tilted 15 degrees, held there), and pressing it again while the wax is molten lays it flat; if the mould moves while it is curled it is left
-4 mm behind. Curled on the cold block, the bottom sets round the curl. After 8 s on the cold block the strip is fixed in the block where it is.
+Declared rules (not fluid simulation): thin processed tissue curls; a strip the forceps' tips have not pressed for 0.3 s counts as curled (and is
+drawn with its far half bent up; its collider stays flat), and pressing it again while the wax is molten lays it flat. Curled with any part of the
+mould over the cold block, the bottom sets round the curl. After 8 s on the cold block the strip is fixed in the block where it is.
 Thin samples are held against the mould's floor with forceps until the paraffin has cooled (US patent 8,329,120).
 
     python demokit.py task.py OUT --mode full
@@ -46,7 +46,7 @@ WARM = (0.22, 0.38, 0.005, 0.165)  # x0, x1, y0, y1
 STRIP = (0.22, 0.38, -0.005, 0.005)
 COLD = (0.24, 0.36, -0.075, -0.005)
 WELL = (0.25, 0.145)  # the heated forceps well, a square tube 12 mm inside, 45 mm tall
-WELL_IN, WELL_H = 0.012, 0.045
+WELL_IN, WELL_H = 0.020, 0.045
 # -- the mould (its frame: origin at the centre of its floor's underside; x across, y along)
 MOULD_IN = (0.024, 0.037)  # inside, x by y (the common 37 x 24 mm stainless base mould)
 WALL, FLOOR, MOULD_H = 0.001, 0.001, 0.009
@@ -56,9 +56,15 @@ M0 = np.array([0.30, 0.065])  # its start on the warm plate
 TISSUE = (0.008, 0.010, 0.002)
 TISSUE_START = (0.0, 0.006)  # in the mould frame: dropped 6 mm towards the far end
 # -- the forceps (their frame: origin at the closed tips; +z along them to the hinge end; the legs spread along x)
-F_LEN = 0.150
-F_GRIP = 0.095  # where the hand holds them, from the tips
-F_START = np.array([WELL[0], WELL[1], PLATE_Z + 0.001])
+F_LEN = 0.150  # along the forceps
+F_GRIP = 0.095  # where the hand holds them, along the forceps from the tips
+F_TIP = 0.012  # the tips' bent segment
+F_BEND = 50.0  # degrees: held with the body tilted this much, the tips stand vertical
+_b = math.radians(F_BEND)
+F_BODY = np.array([0.0, math.sin(_b), math.cos(_b)])  # the body's direction from the bend, in the forceps' frame (the tips run along +z)
+F_GRIP_LOCAL = np.array([0.0, 0.0, F_TIP]) + (F_GRIP - F_TIP) * F_BODY
+F_REST = np.array([[1.0, 0.0, 0.0], [0.0, math.cos(_b), -math.sin(_b)], [0.0, math.sin(_b), math.cos(_b)]])  # in the well: body upright, tips bent
+F_START = np.array([WELL[0], WELL[1] + F_TIP * math.sin(_b) / 2, PLATE_Z + 0.001])  # the tips' end, the bend straddling the well's axis
 
 LOOKS = {
     "housing": m.Look(m.rgb(0.80, 0.81, 0.80), roughness=0.5),
@@ -119,32 +125,53 @@ def _mould():
         cols.append(m.col_box(f"{name}_c", size, c))
     parts.append(("wax_liquid", m.box((ix - 0.0002, iy - 0.0002, WAX), (0, 0, FLOOR + WAX / 2)), "wax"))
     parts.append(("wax_set", m.box((ix - 0.0002, iy - 0.0002, 0.002), (0, 0, FLOOR + 0.001)), "set", True))
-    return m.free("mould", (M0[0], M0[1], TOP + PLATE_Z + 0.0002), parts, cols, LOOKS, mass=0.022, friction=(0.2, 0.15), torsional_patch=None)
+    return m.free("mould", (M0[0], M0[1], TOP + PLATE_Z + 0.0002), parts, cols, LOOKS, mass=0.022, friction=(0.3, 0.25), torsional_patch=None)
 
 
 def _tissue():
     sx, sy, sz = TISSUE
     body = m.box((sx, sy, sz - 0.0004), (0, 0, 0.0002))
     ink = m.box((sx, sy, 0.0004), (0, 0, -sz / 2 + 0.0002))
+    # drawn curled while the rule counts it curled: its far half bent 30 degrees up about its middle (the collider stays flat)
+    half = (sx, sy / 2, sz)
+    flat_half = m.box(half, (0, -sy / 4, 0))
+    bent_half = m.box(half, (0, sy / 4, 0))
+    pivot = np.array([0.0, 0.0, -sz / 2])
+    c, s_ = math.cos(math.radians(30.0)), math.sin(math.radians(30.0))
+    rot = np.array([[1, 0, 0], [0, c, -s_], [0, s_, c]])
+    bent = m.Mesh((bent_half.v - pivot) @ rot.T + pivot, bent_half.f)
     start = (M0[0] + TISSUE_START[0], M0[1] + TISSUE_START[1], TOP + PLATE_Z + FLOOR + sz / 2 + 0.0004)
-    return m.free("tissue", start, [("body", body, "tissue"), ("ink", ink, "ink")], [m.col_box("tissue_c", TISSUE)], LOOKS, mass=0.002,
-                  friction=(0.8, 0.7), torsional_patch=None)
+    parts = [("body", body, "tissue"), ("ink", ink, "ink"), ("curl_flat", flat_half, "tissue", True), ("curl_bent", bent, "tissue", True)]
+    return m.free("tissue", start, parts, [m.col_box("tissue_c", TISSUE)], LOOKS, mass=0.002, friction=(1.5, 1.4), torsional_patch=None)
 
 
 def _forceps():
-    # two legs side by side along x, closed at the tips (as squeezed), spread to 10 mm at the grip, joined at the hinge end
-    def outline(z):
-        w = 0.0015 + (0.010 - 0.0015) * min(z / F_GRIP, 1.0)
-        return w
+    """Embedding forceps with bent tips: two flat legs side by side along x, closed at the tips (as squeezed). The tip segment (12 mm) runs along +z
+    of the part's frame; the body bends 50 degrees from it towards +y. Each leg's blade is 8 mm wide where the fingers hold it, 2 mm at the tips;
+    the pair is 10 mm across there, 1.5 mm at the tips."""
+    def section(u):
+        return 0.0015 + (0.010 - 0.0015) * u, 0.002 + (0.008 - 0.002) * u
 
-    th = 0.003
-    lower = m.Mesh(np.array([[sx * outline(z) / 2, sy * th / 2, z] for z in (0.0, F_GRIP) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]),
-                   np.array([[0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7], [0, 3, 2], [0, 2, 1], [4, 5, 6], [4, 6, 7]]))
-    upper = m.box((0.010, th, F_LEN - F_GRIP), (0, 0, (F_LEN + F_GRIP) / 2))
-    serr = m.box((0.010, th + 0.0006, 0.025), (0, 0, F_GRIP))  # the serrated finger grip
-    cols = [m.col_hull("lower_c", lower), m.col_box("upper_c", (0.010, th, F_LEN - F_GRIP), (0, 0, (F_LEN + F_GRIP) / 2))]
-    return m.free("forceps", (F_START[0], F_START[1], TOP + F_START[2]), [("lower", lower, "steel"), ("upper", upper, "steel"), ("grip", serr, "steel")],
-                  cols, LOOKS, mass=0.025, friction=(1.2, 1.0), torsional_patch=None, com=(0.0, 0.0, 0.08))
+    def segment(p0, p1, u0, u1, direction):
+        e1 = np.array([1.0, 0.0, 0.0])
+        e2 = np.cross(direction, e1)
+        pts = []
+        for p, u in ((p0, u0), (p1, u1)):
+            w, t = section(u)
+            for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+                pts.append(p + sx * w / 2 * e1 + sy * t / 2 * e2)
+        f = [[0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7], [0, 3, 2], [0, 2, 1], [4, 5, 6], [4, 6, 7]]
+        return m.Mesh(np.array(pts), np.array(f))
+
+    bend = np.array([0.0, 0.0, F_TIP])
+    tip = segment(np.zeros(3), bend, 0.0, F_TIP / F_GRIP, np.array([0.0, 0.0, 1.0]))
+    lower = segment(bend, F_GRIP_LOCAL, F_TIP / F_GRIP, 1.0, F_BODY)
+    upper = segment(F_GRIP_LOCAL, bend + (F_LEN - F_TIP) * F_BODY, 1.0, 1.0, F_BODY)
+    grip = segment(F_GRIP_LOCAL - 0.0125 * F_BODY, F_GRIP_LOCAL + 0.0125 * F_BODY, 1.03, 1.03, F_BODY)  # the serrated finger grip
+    cols = [m.col_hull("tip_c", tip), m.col_hull("lower_c", lower), m.col_hull("upper_c", upper)]
+    return m.free("forceps", (F_START[0], F_START[1], TOP + F_START[2]), [("tip", tip, "steel"), ("lower", lower, "steel"), ("upper", upper, "steel"),
+                  ("grip", grip, "steel")], cols, LOOKS, mass=0.025, friction=(1.2, 1.0), torsional_patch=None, com=tuple(F_GRIP_LOCAL - 0.01 * F_BODY),
+                  start_quat=tuple(ek.quat_xyzw(F_REST)))
 
 
 STATION = _station()
@@ -171,6 +198,7 @@ def snapshot(env) -> ek.Snapshot:
 GEOM = ek.Geometry(plate_z=PLATE_Z, cold=COLD, well=WELL, well_h=WELL_H, mould_in=MOULD_IN, mould_h=MOULD_H, floor=FLOOR, tissue=TISSUE,
                    start_mould=(M0[0], M0[1]))
 RULES = ek.Rules(GEOM, DT)
+RULES_STEP = [0]
 
 
 def _hold_tissue(env, pose):
@@ -186,6 +214,7 @@ class Trial:
 
     def reset(self, env=None):
         RULES.reset()
+        RULES_STEP[0] = 0
         self.hold = 0
         self.full = False
         self.score = 0.0
@@ -203,6 +232,12 @@ class Trial:
         elif self.weightless:
             m.push(env, "tissue", (0.0, 0.0, 0.0))
             self.weightless = False
+        if os.environ.get("EMBED_DEBUG") and RULES_STEP[0] % int(os.environ["EMBED_DEBUG"]) == 0:
+            tips = snap.tips
+            local = RULES.in_mould(snap, tips)
+            print(f"[embed-dbg] {RULES_STEP[0]} " + ", ".join(f"{k} {v}" for k, v in RULES.report(snap).items())
+                  + f"; forceps tip {np.round(snap.forceps_pos * 1000, 1).tolist()}, nearest fingertip in mould mm {np.round(local[np.argmin(np.abs(local).sum(1))] * 1000, 1).tolist()}", flush=True)
+        RULES_STEP[0] += 1
         mo = RULES.moment(snap)
         self.hold = self.hold + 1 if mo >= 0.999 else 0
         self.full = self.full or self.hold >= HOLD_STEPS
@@ -210,10 +245,13 @@ class Trial:
         self.show(env)
 
     def show(self, env):
-        if RULES.set_ is self.shown_set:
+        curled = RULES.floating
+        if (RULES.set_, curled) == self.shown_set:
             return
-        self.shown_set = RULES.set_
+        self.shown_set = (RULES.set_, curled)
         m.set_visible(f"{m.ENV_PATH}/mould/visual/wax_set", RULES.set_)
+        for name, vis in (("body", not curled), ("ink", not curled), ("curl_flat", curled), ("curl_bent", curled)):
+            m.set_visible(f"{m.ENV_PATH}/tissue/visual/{name}", vis)
 
 
 TRIAL = Trial()
@@ -239,7 +277,7 @@ def _report(ctx, env, label=""):
 
 
 def demo_script(ctx):
-    """Left hand: the forceps. Takes them from the well, tilts them 30 degrees (tips towards the mould, the hand off to its left side), presses the
+    """Left hand: the forceps. Takes them from the well, tilts them 50 degrees (tips towards the mould, the hand off to its left side), presses the
     piece flat where it lies and slides it to the middle of the mould under the tips, then keeps pressing, following the mould, while the right hand
     pinches the mould by its near end and slides it 10 cm across onto the cold block. Holds the press for 9 s, lifts the forceps, puts them back in
     the well. Reads only poses a camera sees: the mould's, the piece's, the forceps'.
@@ -259,8 +297,8 @@ def demo_script(ctx):
         for _ in range(40):
             yield
         return
-    TILT = d.tilted(30.0, -90.0)
-    axis = TILT.rot[:, 2]  # the direction the forceps point, from the hand to the tips
+    TILT = d.tilted(50.0, -90.0)
+    axis = TILT.rot[:, 2]  # the hand's approach direction while tilted
 
     def forceps_tip():
         s = m.state(env, "forceps")
@@ -275,63 +313,70 @@ def demo_script(ctx):
         return world(s.pos) + np.array([0.0, 0.0, TISSUE[2] / 2])
 
     def hand_for_tip(tip):
-        """Where the left TCP goes so that the forceps' tips are at `tip`."""
-        return np.asarray(tip, float) - F_GRIP * axis + np.array([0.0, 0.0, TOP])
+        """Where the left TCP goes so that the forceps' tips are at `tip`, once the hand is tilted (the tip segment then stands upright)."""
+        return np.asarray(tip, float) + F_GRIP_LOCAL + np.array([0.0, 0.0, TOP])
 
     # 1. the forceps from the well (fingers across the legs, closing along x)
-    grip_z = F_START[2] + F_GRIP
-    yield from l.move((WELL[0], WELL[1], TOP + grip_z + 0.06), grip=d.down(-90.0), t=2.5, label="over the forceps")
-    yield from l.move((WELL[0], WELL[1], TOP + grip_z), t=1.0, label="round the forceps")
-    yield from l.close(width=0.010, force=15.0, label="take the forceps")
+    well_grip = F_START + F_REST @ F_GRIP_LOCAL  # the grip of the forceps standing in the well
+    yield from l.move(well_grip + np.array([0.0, 0.0, TOP + 0.06]), grip=d.down(-90.0), t=2.5, label="over the forceps")
+    yield from l.move(well_grip + np.array([0.0, 0.0, TOP]), t=1.0, label="round the forceps")
+    yield from l.close(width=0.010, force=30.0, label="take the forceps")
     yield from l.move(l.at() + np.array([0.0, 0.0, 0.07]), t=1.2, label="lift them out of the well")
     start_tip = tissue_top() + np.array([0.0, 0.0, 0.03])
     yield from l.move(hand_for_tip(start_tip), grip=TILT, t=2.5, label="tilted, tips over the piece")
-    yield from r.move(mould_centre() + np.array([0.0, -0.010, 0.05 + TOP]), grip=d.down(90.0), t=2.0, label="the right hand over the mould's near end")
-    # 2. tips down onto the piece, pressing about 2 mm past its top; then slide it to the middle under the tips
-    yield from _press(l, ctx, env, tissue_top, forceps_tip, axis)
-    for _ in range(6):
-        yield
-    _report(ctx, env, "pressed: ")
-    yield from _drag_to_centre(l, ctx, env, mould_centre, forceps_tip, tissue_top, axis)
-    _report(ctx, env, "centred: ")
-    if mode == "lift":
-        yield from l.move(l.at() + np.array([0.0, 0.0, 0.03]), t=0.6, label="the forceps lifted off")
-    # 3. the right hand pinches the mould's near end; both hands move 10 cm towards -y together, the left following the mould
-    pinch = mould_centre() + np.array([0.0, -0.010, 0.0])
+    # 2. the right hand pinches the mould by its long walls at its near end, and holds it still while the forceps work
+    yield from r.move(mould_centre() + np.array([0.0, -0.015, 0.05 + TOP]), grip=d.down(90.0), t=2.0, label="the right hand over the mould's near end")
+    pinch = mould_centre() + np.array([0.0, -0.015, 0.0])
     yield from r.move(pinch + np.array([0.0, 0.0, 0.03 + 0.016 + TOP]), t=1.0, label="the right hand down to the mould")
-    yield from r.move(pinch + np.array([0.0, 0.0, 0.0025 + 0.013 + TOP]), t=1.0, label="fingers either side of the mould's long walls")
     if mode == "dip":
-        yield from r.move(mould_centre() + np.array([0.0, 0.0, 0.004 + 0.013 + TOP]), finger=0.0, t=1.0, label="the right fingers into the wax")
+        yield from r.move(mould_centre() + np.array([0.0, 0.0, 0.004 + 0.013 + TOP]), finger=0.0, t=1.5, label="the right fingers into the wax")
         for _ in range(20):
             yield
         _report(ctx, env, "dipped: ")
         return
+    yield from r.move(pinch + np.array([0.0, 0.0, 0.0025 + 0.013 + TOP]), t=1.0, label="fingers either side of the mould's long walls")
     yield from r.close(width=MOULD_IN[0] + 2 * WALL, force=12.0, label="pinch the mould")
+    # 3. tips down onto the strip; then, pressing, carry it to the middle under the tips (a closed loop on the tips, the strip and the mould)
+    yield from _press(l, ctx, env, tissue_top, forceps_tip, axis)
+    keep = _KeepPressed(l, mould_centre, tissue_top, forceps_tip)
+    yield from keep.run(4.0, centre=True)
+    _report(ctx, env, "centred, pressing: ")
+    if mode == "lift":
+        yield from l.move(l.at() + np.array([0.0, 0.0, 0.03]), t=0.6, label="the forceps lifted off")
     if mode == "still":
-        for _ in range(int(12 / DT)):
-            yield
+        yield from keep.run(12.0)
         _report(ctx, env, "still: ")
         return
+    # 4. the right hand slides the mould 10 cm towards -y onto the cold block; the left keeps pressing, carried with the mould
     target_y = (COLD[2] + COLD[3]) / 2
     shift = np.array([0.0, target_y - mould_centre()[1], 0.0])
-    offset = forceps_tip() - mould_centre()
-    pressing = mode != "lift"
+    if mode == "lift":
+        lifted = l.at().copy()
+        start = mould_centre().copy()
 
-    def follow_target():
-        return mould_centre() + offset + (np.array([0.0, 0.0, -0.002]) if pressing else np.array([0.0, 0.0, 0.03])) - F_GRIP * axis + np.array([0.0, 0.0, TOP])
+        def carried():
+            for _ in range(int(5.6 / DT)):
+                l._solve(lifted + (mould_centre() - start), l.grip.rot)
+                yield
 
-    yield from ctx.together(r.move(r.at() + shift, t=5.0, label="slide the mould onto the cold block"),
-                            l.follow(follow_target, t=5.6, speed=0.05, label="the forceps follow the mould, pressing"))
+        yield from ctx.together(r.move(r.at() + shift, t=5.0, label="slide the mould onto the cold block"), carried())
+    else:
+        yield from ctx.together(r.move(r.at() + shift, t=5.0, label="slide the mould onto the cold block"), keep.run(5.6, follow=True))
     _report(ctx, env, "on the cold block: ")
+    if mode != "lift":
+        yield from keep.run(9.5 if mode != "nohold" else 0.5)  # the right hand keeps the mould still on the cold block
+    else:
+        yield from ctx.until(lambda: False, 9.5)
+    _report(ctx, env, "after the hold: ")
     yield from r.open(t=0.4, label="let go of the mould")
     yield from r.move(r.at() + np.array([0.0, -0.03, 0.06]), t=1.0, label="the right hand up and away")
-    hold = 9.5 if mode != "nohold" else 0.5
-    yield from l.follow(follow_target, t=hold, speed=0.05, label="keep pressing while the wax sets")
-    _report(ctx, env, "after the hold: ")
     # 4. forceps back in the well
     yield from l.move(l.at() + np.array([0.0, 0.0, 0.04]), t=0.8, label="lift the forceps")
-    yield from l.move((WELL[0], WELL[1], TOP + grip_z + 0.07), grip=d.down(-90.0), t=2.5, label="the forceps upright over the well")
-    yield from l.move((WELL[0], WELL[1], TOP + grip_z + 0.004), t=1.5, label="down into the well")
+    yield from l.move(well_grip + np.array([0.0, 0.0, TOP + 0.07]), grip=d.down(-90.0), t=2.5, label="the forceps upright over the well")
+    tips_to_hand = lambda: l.tcp() - (forceps_tip() + np.array([0.0, 0.0, TOP]))  # noqa: E731  (as the forceps now sit in the hand)
+    yield from l.servo(lambda tt: F_START + np.array([0.0, 0.0, TOP + 0.03]) + tips_to_hand(), tol=0.0015, timeout=2.0, gain=0.3,
+                       read=lambda: forceps_tip() + np.array([0.0, 0.0, TOP]) + tips_to_hand(), label="the tips over the well")
+    yield from l.move(l.at() + np.array([0.0, 0.0, -0.028]), t=1.5, label="down into the well")
     yield from l.open(t=0.4, label="let go of the forceps")
     yield from l.move(l.at() + np.array([0.0, 0.0, 0.06]), t=1.0, label="the left hand up")
     yield from ctx.together(l.move((0.18, 0.22, TOP + 0.20), grip=d.down(0.0), t=1.5), r.move((0.18, -0.22, TOP + 0.20), grip=d.down(0.0), t=1.5))
@@ -341,35 +386,53 @@ def demo_script(ctx):
             _report(ctx, env, "end: ")
 
 
+class _KeepPressed:
+    """Keeps the forceps' tips pressing on the strip, every control step. With `follow`, the hand moves with the mould (so a slide carries it). If the tips have drifted out of a safe zone on the strip's top (1 mm inside its outline, over its middle third or curling end),
+    the hand shifts level by a quarter of the miss, at most 1.5 mm a step. With `centre`, the hand also moves by a quarter of the strip's offset
+    from the mould's middle, at most 1 mm a step: the pressed strip goes with the tips. The height creeps down (0.5 mm a step at most, 4 mm
+    below the first press at most) until the tips are 1.5 mm into the strip's top: the arm's stiffness then holds a steady press."""
+
+    def __init__(self, arm, mould_centre, tissue_top, forceps_tip):
+        self.arm, self.mould_centre, self.tissue_top, self.forceps_tip = arm, mould_centre, tissue_top, forceps_tip
+        self.floor_z = self.floor_ref = None
+
+    def run(self, seconds: float, centre: bool = False, follow: bool = False):
+        from yam_arena import ik
+        a = self.arm
+        sx, sy = TISSUE[0], TISSUE[1]
+        c = ik.tcp_pose(a.q, a.base)[0]
+        last = self.mould_centre()
+        if self.floor_z is None:
+            self.floor_z = c[2] - 0.004  # the hand never goes more than 4 mm below where the first press left it (relative to the mould)
+            self.floor_ref = last[2]
+        for _ in range(max(1, round(seconds / DT))):
+            mould, strip, tip = self.mould_centre(), self.tissue_top(), self.forceps_tip()
+            rel = tip[:2] - strip[:2]
+            safe = abs(rel[0]) < sx / 2 - 0.001 and -sy / 6 + 0.001 < rel[1] < sy / 2 - 0.001
+            move = np.zeros(2)
+            if not safe:
+                move += np.clip(0.25 * (strip[:2] + np.array([0.0, 0.0015]) - tip[:2]), -0.0015, 0.0015)
+            elif centre:
+                move += np.clip(0.25 * (mould[:2] - strip[:2]), -0.001, 0.001)
+            dz = float(np.clip(0.25 * ((strip[2] - 0.0015) - tip[2]), -0.0005, 0.0005))  # push the tips 1.5 mm into the strip's top
+            c = c + ((mould - last) if follow else 0.0) + np.array([move[0], move[1], dz])
+            c[2] = max(c[2], self.floor_z + (mould[2] - self.floor_ref))
+            last = mould
+            a._solve(c, a.grip.rot)
+            yield
+
+
 def _press(l, ctx, env, tissue_top, forceps_tip, axis):
-    """Bring the tips down onto the piece's top and 2 mm past it, closed loop on where the tips really are."""
+    """The tips to 3 mm above the strip, 1.5 mm towards its curling end, closed loop on where the tips are; then straight down 6 mm: the bent tips
+    stand upright, and the arm's own stiffness presses."""
     def goal(tt):
-        return tissue_top() + np.array([0.0, 0.0, max(0.02 - 0.015 * tt, -0.002)]) - F_GRIP * axis + np.array([0.0, 0.0, TOP])
+        return tissue_top() + np.array([0.0, 0.0015, 0.003]) + m.state(env, "forceps").rotation() @ F_GRIP_LOCAL + np.array([0.0, 0.0, TOP])
 
     def hand_from_tips():
-        return forceps_tip() - F_GRIP * axis + np.array([0.0, 0.0, TOP])
+        return forceps_tip() + m.state(env, "forceps").rotation() @ F_GRIP_LOCAL + np.array([0.0, 0.0, TOP])
 
-    yield from l.servo(goal, tol=0.0015, timeout=3.0, gain=0.3, read=hand_from_tips, label="tips down onto the piece")
-
-
-def _drag_to_centre(l, ctx, env, mould_centre, forceps_tip, tissue_top, axis):
-    """Slide the pressed piece to the mould's middle under the tips, 2 mm at a time, the tips held 2 mm into its top."""
-    def goal(tt):
-        tip = forceps_tip()
-        c = mould_centre()
-        d = np.array([c[0] - tip[0], c[1] - tip[1], 0.0])
-        n = float(np.linalg.norm(d))
-        step = d if n < 0.002 else d / n * 0.002
-        return np.array([tip[0] + step[0], tip[1] + step[1], tissue_top()[2] - 0.002]) - F_GRIP * axis + np.array([0.0, 0.0, TOP])
-
-    def hand_from_tips():
-        return forceps_tip() - F_GRIP * axis + np.array([0.0, 0.0, TOP])
-
-    for _ in range(40):
-        tip, c = forceps_tip(), mould_centre()
-        if np.hypot(tip[0] - c[0], tip[1] - c[1]) < 0.0012:
-            break
-        yield from l.servo(goal, tol=0.001, timeout=0.15, gain=0.3, read=hand_from_tips, label="slide the piece to the middle")
+    yield from l.servo(goal, tol=0.001, timeout=2.5, gain=0.3, read=hand_from_tips, label="tips over the strip")
+    yield from l.move(l.at() + np.array([0.0, 0.0, -0.006]), t=1.5, label="tips down onto the strip")
 
 
 if os.environ.get("EMBED_PRINT_LAYOUT"):

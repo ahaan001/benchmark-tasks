@@ -1,5 +1,8 @@
-"""The embedding rules as bookkeeping, pure Python and NumPy: when the piece curls, when the wax sets, and the score. `write_pose` is the one
-call into Isaac Lab (imported lazily).
+"""The embedding rules as bookkeeping, pure Python and NumPy: when the strip curls, when the wax sets, and the score. `write_pose` (holding the set
+strip in its block) is the one call into Isaac Lab, imported lazily.
+
+The curl is a declared rule, not a shape change: the strip stays one flat rigid body for the physics; it counts as curled (and is drawn curled)
+while the forceps' tips have been off it for 0.3 s, until they press it again.
 
 Frames: the station frame with z up from the table. The mould's frame has its origin at the centre of its floor's underside; the piece's at its
 centre, its inked cut face towards -z; the forceps' at their closed tips.
@@ -13,10 +16,6 @@ from dataclasses import dataclass
 import numpy as np
 
 FLOAT_AFTER = 0.3  # s without the tips on the strip before it curls in molten wax: a dab does not hold it
-FLOAT_LIFT = 0.002  # m: its curled end off the floor
-FLOAT_TILT = 15.0  # degrees, about the strip's own x axis (a curl, as a rigid strip shows it)
-DRIFT_SPEED = 0.01  # m/s: the mould moving faster than this while the strip is curled shifts it
-DRIFT_LAG = 0.004  # m the curled strip lags behind the mould's motion, once per curl
 SET_AFTER = 8.0  # s on the cold block for the bottom layer to set
 FLAT_DEPTH = 0.001  # m: the whole inked face within the first 1 mm of facing (spread of its depth, and its lowest point off the floor)
 CENTRE = 0.003  # m from the mould's middle
@@ -74,12 +73,10 @@ class Rules:
         self.unpressed = FLOAT_AFTER  # a strip just dropped in has not been pressed: it starts curled
         self.floating = True  # curled
         self.curl_set = False  # curled while on the cold block: the bottom sets round the curl
-        self.drift_done = False
         self.cold_time = 0.0
         self.set_ = False
         self.flat = self.centred = False
         self.rel = None  # the strip's pose in the mould's frame, held after the set
-        self.float_xy = None
         self.failed = False
         self.why = ""
 
@@ -89,10 +86,16 @@ class Rules:
 
     def pressed(self, snap: Snapshot) -> bool:
         sx, sy, sz = self.g.tissue
-        rel = snap.tissue_rot.T @ (snap.forceps_pos - snap.tissue_pos)
+        rel = snap.tissue_rot.T @ (self.tip_point(snap) - snap.tissue_pos)
         on_top = sz / 2 - PRESS_INTO <= rel[2] <= sz / 2 + PRESS_ABOVE
         middle_or_curl = -sy / 6 <= rel[1] <= sy / 2  # the middle third or the curling (+y) end, not the end that lies flat anyway
         return bool(abs(rel[0]) <= sx / 2 and middle_or_curl and on_top)
+
+    def tip_point(self, snap: Snapshot) -> np.ndarray:
+        """The lowest corner of the closed tips' end face (1.5 mm by 2 mm): where a tilted forceps touches."""
+        corners = np.array([[a * 0.00075, b * 0.001, 0.0] for a in (-1, 1) for b in (-1, 1)])
+        pts = snap.forceps_pos + corners @ snap.forceps_rot.T
+        return pts[int(np.argmin(pts[:, 2]))]
 
     def over_cold(self, snap: Snapshot) -> bool:
         """Any part of the mould's floor over the cold block, the mould resting: the bottom starts to cool, and a curl then sets."""
@@ -110,20 +113,13 @@ class Rules:
     def piece_in_mould(self, snap: Snapshot) -> tuple[np.ndarray, np.ndarray]:
         return self.in_mould(snap, snap.tissue_pos)[0], snap.mould_rot.T @ snap.tissue_rot
 
-    def float_pose(self, snap: Snapshot, xy) -> tuple[np.ndarray, np.ndarray]:
-        sz = self.g.tissue[2]
-        rel_rot = snap.mould_rot.T @ snap.tissue_rot
-        yaw = math.atan2(rel_rot[1, 0], rel_rot[0, 0])
-        local = np.array([xy[0], xy[1], self.g.floor + sz / 2 + FLOAT_LIFT + 0.5 * self.g.tissue[1] * math.sin(math.radians(FLOAT_TILT))])
-        return snap.mould_pos + snap.mould_rot @ local, snap.mould_rot @ rot_z(yaw) @ rot_x(FLOAT_TILT)
-
     def fail(self, why: str) -> None:
         if not self.failed:
             self.failed, self.why = True, why
 
     # -- every control step
     def step(self, snap: Snapshot):
-        """Advance the rules one control step. Returns the pose (position, rotation) at which the piece must be held, or None to leave it to physics."""
+        """Advance the rules one control step. Returns the pose (position, rotation) at which the set strip is held in its block, or None."""
         g = self.g
         local = self.in_mould(snap, snap.tips)
         ix, iy = g.mould_in
@@ -139,36 +135,24 @@ class Rules:
             return snap.mould_pos + snap.mould_rot @ self.rel[0], snap.mould_rot @ self.rel[1]
         on_cold = self.on_cold(snap)
         if self.pressed(snap) and not self.curl_set:
-            self.unpressed, self.floating, self.float_xy, self.drift_done = 0.0, False, None, False
+            self.unpressed, self.floating = 0.0, False
         else:
             self.unpressed += self.dt
             if self.unpressed >= FLOAT_AFTER:
                 self.floating = True
         if self.floating and self.over_cold(snap):
             self.curl_set = True
-        if self.floating:
-            if self.float_xy is None or not self.drift_done:
-                self.float_xy = tp[:2].copy()  # a curled strip can still be pushed about
-            if not self.drift_done and float(np.linalg.norm(snap.mould_vel[:2])) > DRIFT_SPEED:
-                v = snap.mould_rot.T @ snap.mould_vel
-                self.float_xy = self.float_xy - DRIFT_LAG * v[:2] / max(float(np.linalg.norm(v[:2])), 1e-9)
-                self.drift_done = True
         self.cold_time = self.cold_time + self.dt if on_cold else 0.0
-        hold = self.float_pose(snap, self.float_xy) if self.floating else None
         if self.cold_time >= SET_AFTER:
-            pos, rot = hold if hold is not None else (snap.tissue_pos, snap.tissue_rot)
-            rel_pos, rel_rot = snap.mould_rot.T @ (pos - snap.mould_pos), snap.mould_rot.T @ rot
+            rel_pos, rel_rot = snap.mould_rot.T @ (snap.tissue_pos - snap.mould_pos), snap.mould_rot.T @ snap.tissue_rot
             self.rel = (rel_pos, rel_rot)
             depth = self.ink_heights(rel_pos, rel_rot) - g.floor
-            self.flat = float(depth.max() - depth.min()) <= FLAT_DEPTH and float(depth.min()) <= FLAT_DEPTH
+            lies_flat = float(depth.max() - depth.min()) <= FLAT_DEPTH and float(depth.min()) <= FLAT_DEPTH
+            self.flat = lies_flat and not self.floating  # a curled strip sets curled
             self.centred = math.hypot(rel_pos[0], rel_pos[1]) <= CENTRE
             self.set_ = True
             return snap.mould_pos + snap.mould_rot @ rel_pos, snap.mould_rot @ rel_rot
-        return hold
-
-    @property
-    def drifted(self) -> bool:
-        return self.drift_done
+        return None
 
     def ink_heights(self, pos: np.ndarray, r: np.ndarray) -> np.ndarray:
         """Heights in the mould frame of the inked face's four corners, for the strip at `pos`, `r` in that frame."""
@@ -194,7 +178,8 @@ class Rules:
 
     def report(self, snap: Snapshot) -> dict:
         tp, tr = self.piece_in_mould(snap)
-        return {"pressed": self.pressed(snap), "curled": self.floating, "curl set": self.curl_set, "drifted": self.drifted, "cold s": round(self.cold_time, 2), "set": self.set_,
+        rel = snap.tissue_rot.T @ (self.tip_point(snap) - snap.tissue_pos)
+        return {"tip in strip mm": np.round(rel * 1000, 1).tolist(), "mould": np.round(snap.mould_pos * 1000, 1).tolist(), "pressed": self.pressed(snap), "curled": self.floating, "curl set": self.curl_set, "cold s": round(self.cold_time, 2), "set": self.set_,
                 "flat": self.flat, "centred": self.centred, "piece mm": np.round(tp * 1000, 1).tolist(), "piece tilt": round(tilt_deg(tr), 1),
                 "forceps in well": self.forceps_in_well(snap), "clear": self.hands_clear(snap), "failed": self.why or False}
 
