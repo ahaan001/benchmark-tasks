@@ -40,7 +40,8 @@ HALF_GAP = 0.020  # each fingertip this far from the card's centre line
 GRIP = (HALF_GAP - 0.0015) / 0.047  # share of fully open: the tips' inner faces are 47 mm from the centre when open
 PRESS = -0.001 if MODE == "light" else 0.00045  # the tips are commanded this far into the surface they ride on
 PRESS_DRAW = 0.0005  # second touch, on the leaning card
-PRESS_FELT = 0.0008  # once the card lies on the felt
+PRESS_FELT = 0.0025  # once the card lies on the felt: deep enough that the arm really bears on it
+RETRIES = 3  # a fingertip that slides over the card without taking it is lifted and set down again, a little deeper
 CLEAR_PACK = 0.03  # the card is drawn until its back edge is this far past the pack
 LEAD = 0.020  # the one fingertip that carries a card rides this far ahead of the card's middle
 BACK = 0.032  # the tips land this far behind the card's centre
@@ -75,6 +76,7 @@ class Dealer:
         self.swing: dict = {}  # arm -> [from joints, to joints, elapsed, duration]: a joint-space move
         self.lead = np.zeros(2)  # unit vector from the card to its box, fixed when the fingertip is set down
         self.homing = None  # an arm on its way back to the ready pose, out of the other arm's way
+        self.extra, self.tries = 0.0, 0  # added press and retries on the card in hand
         self.phase, self.clock, self.last, self.still, self.anchor = phase, 0.0, None, 0, None
         self.worst_ik = 0.0
 
@@ -157,6 +159,7 @@ class Dealer:
         if MODE == "edge":  # a poor deal: beside the pack, on the edges of its top cards
             top = top - [0.0, 0.0, 0.0015]
         if self.phase == "over":
+            self.extra, self.tries = 0.0, 0
             x = pos[0] - BACK if MODE != "edge" else pack_pos[0] - L.CARD_L / 2 - 0.010
             if self._reach(arm, self._tips(x, pos[1], top[2], PRESS, HOVER), FREE):
                 self._next("touch")
@@ -203,28 +206,41 @@ class Dealer:
                 d = np.asarray(box, float) - pos[:2]
                 self.lead = d / np.linalg.norm(d)
             x, y = pos[:2] + LEAD * self.lead
-            if self._reach(arm, self._tips(x, y, top[2], PRESS_FELT, 0.012), FREE / 2) and self._wait(0.4):
+            if self._reach(arm, self._tips(x, y, top[2], 0.0, 0.012), FREE / 2) and self._wait(0.4):
                 self._next("touch the lead")
         elif self.phase == "touch the lead":
             x, y = self.tcp[arm][:2]
-            if self._move(arm, self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT), SLOW) and self._wait(0.2):
+            press = PRESS_FELT + self.extra
+            if self._move(arm, self._tips(x, y, self._surface(pos, rot, x, y), press), SLOW) and self._wait(0.2):
                 self._next("slide")
         elif self.phase == "slide":  # straight to the box; the card trails behind the fingertip
+            if self.anchor is None:
+                self.anchor = (self.tcp[arm][:2].copy(), pos[:2].copy())
             goal = np.asarray(box, float) + LEAD * self.lead
             d = goal - self.tcp[arm][:2]
             dist = float(np.linalg.norm(d))
             x, y = goal if dist <= DRAG * self.dt else self.tcp[arm][:2] + d / dist * DRAG * self.dt
-            self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT)
-            if dist <= DRAG * self.dt:
+            self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT + self.extra)
+            went, came = np.linalg.norm(self.tcp[arm][:2] - self.anchor[0]), np.linalg.norm(pos[:2] - self.anchor[1])
+            if went > 0.02 and came < 0.5 * went and self.tries < RETRIES:  # the fingertip is sliding over the card
+                self.extra, self.tries = self.extra + 0.001, self.tries + 1
+                self._next("rise")
+            elif dist <= DRAG * self.dt:
                 self._next("place")
         elif self.phase == "place":  # the last few millimetres, on the card's own position
             err = np.asarray(box, float) - pos[:2]
             dist = float(np.linalg.norm(err))
             step = min(DRAG / 2 * self.dt, dist)
             x, y = self.tcp[arm][:2] + (err / dist * step if dist > 1e-6 else 0.0)
-            self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT)
-            if dist < 0.002 or self._wait(2.0):
+            self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT + self.extra)
+            if dist < 0.002:
                 self._next("settle")
+            elif self._wait(2.0):
+                if dist > 0.004 and self.tries < RETRIES:
+                    self.extra, self.tries = self.extra + 0.001, self.tries + 1
+                    self._next("rise")
+                else:
+                    self._next("settle")
         elif self.phase == "settle":
             if self._wait(0.3):
                 self._next("lift")
