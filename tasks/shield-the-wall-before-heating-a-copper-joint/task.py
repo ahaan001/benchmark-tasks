@@ -100,9 +100,12 @@ def _track(sim):
     TRIAL.update(sim.t, pose(sim.states, "torch"), pose(sim.states, "shield"), finger_points(sim.states))
     if DEBUG and round(sim.t * CONTROL_HZ) % 20 == 0:
         n = TRIAL.now
+        (tp, tr), (sp, sr) = pose(sim.states, "torch"), pose(sim.states, "shield")
+        base = (scoring.torch_base((tp, tr)) - UP) * 100
         print(f"[task] t={sim.t:5.1f} score={TRIAL.score():.2f} hazard='{TRIAL.hazard}' heat={TRIAL.heat_s:4.1f}s shielded={n['covered']} "
               f"flame-coupling={n['near'] * 100:5.1f}cm tip={n['tip_gap'] * 100:5.1f}cm bare wood={min(n['wood'], 9.99) * 100:5.1f}cm tilt={n['tilt']:4.1f} "
-              f"home={n['home']} clear={n['clear']} rest={n['rest']}", flush=True)
+              f"home={n['home']} clear={n['clear']} rest={n['rest']} | torch base ({base[0]:5.1f},{base[1]:6.1f},{base[2]:5.1f}) "
+              f"| shield panel ({(sp[0] - UP[0]) * 100:5.1f},{(sp[1] - UP[1]) * 100:6.1f},{(sp[2] - UP[2]) * 100:5.1f}) tilt {scoring.angle_deg(sr[:, 2], (0.0, 0.0, 1.0)):4.1f}", flush=True)
 
 
 def score(objects):
