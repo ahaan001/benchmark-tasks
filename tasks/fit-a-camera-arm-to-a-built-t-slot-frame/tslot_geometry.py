@@ -32,7 +32,7 @@ CORNER = (0.040, 0.006, 0.036)  # 80/20 40-4302 inside corner bracket: leg lengt
 # -- the camera bracket (our design; drawing and model in the task folder) ---------------------------------------------------------------
 # Its own frame: origin at the middle of the foot's underside, x along the foot's long side, y along the arm, z up.
 FOOT = (0.080, 0.040, 0.0064)
-HOLE_D, SCREW_DX = 0.0066, 0.030
+HOLE_D, SCREW_DX = 0.0060, 0.030  # the holes are a light push fit on the M6 screws: they stay where they are put and have no play
 NOTCH = 0.003  # a V this deep at the middle of the long edge away from the arm
 ARM_W, ARM_H, ARM_END = 0.020, 0.012, 0.200
 PLATE = (0.004, 0.042, 0.042)  # the side plate at the arm's end that the camera's back screws to
@@ -49,7 +49,7 @@ PITCH = 0.001
 NUT_A, NUT_B, NUT_F, NUT_E = 0.01575, 0.00775, 0.00457, 0.0015  # flange length and width, flange thickness, boss height
 BOSS_C = 0.00782  # the boss's length along the flange
 NUT_G = NUT_F + NUT_E  # 6.07 mm overall
-NUT_PLAY = 0.0003  # the nuts' colliders are this much narrower: the play of an M6 screw in a 6.6 mm hole, which the hinges here do not have
+NUT_PLAY = 0.0  # the nuts collide at their real width: the screws have no play in the foot's holes, and neither have the hinges here
 NUT_CUT_R = 0.0036  # (est, from the catalog drawing) radius of the two cut-back corners of the boss
 FLANGE_CUT_R = 0.0030  # (est) and of the flange
 NUT_BEVEL_FROM = 0.0011  # (est, from the catalog drawing) the flange's ends are bevelled at 45 degrees from this far below its top face

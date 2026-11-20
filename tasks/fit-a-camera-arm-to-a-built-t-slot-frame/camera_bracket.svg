@@ -4,11 +4,11 @@
 <rect x="300.0" y="156.0" width="540.0" height="60.0" fill="#eee" stroke="#222" stroke-width="1"/>
 <rect x="714.0" y="216.0" width="126.0" height="12.0" fill="#ddd" stroke="#222" stroke-width="1"/>
 <rect x="714.0" y="228.0" width="126.0" height="69.0" fill="none" stroke="#222" stroke-width="1" stroke-dasharray="4 3"/>
-<circle cx="240.0" cy="96.0" r="9.9" fill="none" stroke="#222" stroke-width="1"/>
-<circle cx="240.0" cy="276.0" r="9.9" fill="none" stroke="#222" stroke-width="1"/>
+<circle cx="240.0" cy="96.0" r="9.0" fill="none" stroke="#222" stroke-width="1"/>
+<circle cx="240.0" cy="276.0" r="9.0" fill="none" stroke="#222" stroke-width="1"/>
 <text x="240.0" y="54.0" font-family="Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle" fill="#222">foot 80 x 40 x 6.4</text>
 <text x="171.0" y="190.5" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#222">V notch 3 deep</text>
-<text x="180.0" y="324.0" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="start" fill="#222">2 holes 6.6, 60 apart</text>
+<text x="180.0" y="324.0" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="start" fill="#222">2 holes 6, 60 apart</text>
 <text x="570.0" y="147.0" font-family="Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle" fill="#222">arm 20 wide, 12 high, to 200 from the foot's middle</text>
 <text x="840.0" y="315.0" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#222">side plate 42 x 42 x 4; camera 42 x 42 x 23 (dashed)</text>
 <text x="600.0" y="190.5" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="start" fill="#222">hold here</text>

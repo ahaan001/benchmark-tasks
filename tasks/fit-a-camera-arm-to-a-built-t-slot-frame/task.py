@@ -482,10 +482,10 @@ def demo_script(ctx):
         left.grip = d._as_grip(turn @ rot)
 
     def lower():
-        """Both nuts into the slot, by feel. The arm cannot place them to the 0.34 mm either side that the opening leaves, and nuts drawn
+        """Both nuts into the slot, by feel. The arm cannot place them to the 0.19 mm either side that the opening leaves, and nuts drawn
         across the lips turn on their screws. So the hand tips the camera end up 6 degrees, brings the nuts' outer lower edges over the
         opening, which is 8 mm wide for an edge, and lets them down into it; draws the foot outward until the nuts lie against the outer
-        lip, which puts them 0.3 mm inside it once level; takes that push off; then brings the foot level and down together, steering by
+        lip, which puts them just inside it once level; takes that push off; then brings the foot level and down together, steering by
         the bracket's own tilt, so that the camera end never drops and the nuts do not wedge. Returns whether the foot is down."""
         pos, _ = bracket()
         yield from left.arc(np.array([pos[0], pos[1], TOP + g.BAR]), (1.0, 0.0, 0.0), ROLL, t=T(1.0), label="tip the camera end up")
@@ -619,9 +619,9 @@ def demo_script(ctx):
         back = hand - hand_yaw()
         if abs(back) > 0.5:
             yield from right.turn(back, t=max(0.3, abs(back) / (2.0 * TURN_RATE)), label="turn the hand back in the air")
-        for _ in range(3):  # the tip's chamfer takes up 0.7 mm and brings a free screw round to the blade: near is near enough
+        for _ in range(3):  # the tip's chamfer takes up 0.7 mm sideways; the hex is turned to the socket's, since the screw is stiff in its hole
             off = wrap60(blade_yaw() - socket(k)[1])
-            if abs(off) > 8.0:
+            if abs(off) > 1.5:
                 yield from right.turn(-off, t=0.3, label="line the hex up with the socket")
             ok = yield from right.servo(socket(k)[0] + [0.0, 0.0, 0.008], tol=0.0006, timeout=T(2.0), gain=0.3, read=tip, label=f"the blade over screw {NAMES[k]}")
             if ok:

@@ -1,7 +1,7 @@
 // Camera bracket for a 40 mm T-slot bar. Units: mm. Print in PETG, solid (100 % infill), foot down, supports under the arm and the side plate.
 // Origin: the middle of the foot's underside. x along the foot's long side, y along the arm, z up.
 foot = [80, 40, 6.4];
-hole_d = 6.6;        // clearance for M6
+hole_d = 6;        // a light push fit on an M6 screw: ream after printing if it binds
 hole_dx = 30;     // each hole from the foot's middle
 notch = 3;          // V notch in the long edge away from the arm
 arm = [20, 12];       // width, height

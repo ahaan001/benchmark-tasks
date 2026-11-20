@@ -16,7 +16,7 @@ def scad() -> str:
     return f"""// Camera bracket for a 40 mm T-slot bar. Units: mm. Print in PETG, solid (100 % infill), foot down, supports under the arm and the side plate.
 // Origin: the middle of the foot's underside. x along the foot's long side, y along the arm, z up.
 foot = [{fx:g}, {fy:g}, {fz:g}];
-hole_d = {g.HOLE_D * MM:g};        // clearance for M6
+hole_d = {g.HOLE_D * MM:g};        // a light push fit on an M6 screw: ream after printing if it binds
 hole_dx = {g.SCREW_DX * MM:g};     // each hole from the foot's middle
 notch = {g.NOTCH * MM:g};          // V notch in the long edge away from the arm
 arm = [{g.ARM_W * MM:g}, {g.ARM_H * MM:g}];       // width, height

@@ -148,7 +148,7 @@ def test_thread_torque_rises_with_the_clamp():
     assert r.T_RUN < wind(0.25) < wind(0.5) < wind(1.0)
     clamp = r.K_THREAD * r.TIGHT_TURNS * g.PITCH
     assert abs(wind(r.TIGHT_TURNS) - (r.T_RUN + r.NUT_FACTOR * r.THREAD_D * clamp)) < 1e-9
-    assert r.T_RUN + r.NUT_FACTOR * r.THREAD_D * clamp < 0.1  # tight, by the demo's measure, takes less torque than a gripper passes through the handle
+    assert r.T_HEAD + r.T_RUN + r.NUT_FACTOR * r.THREAD_D * clamp < 0.1  # tight, by the demo's measure, takes less torque than a gripper passes through the handle
 
 
 # -- the score ------------------------------------------------------------------------------------------------------------------------------------
@@ -287,7 +287,7 @@ def test_text():
         assert needle in TASK["setup"], needle
     for needle in (f"{r.LINE_FULL * 1000:g} mm", f"{r.LINE_PART * 1000:g} mm", f"{r.UNDER_LIP * 1000:g} mm", "quarter turn", f"{r.CLEAR * 100:g} cm", f"{r.IN_SLOT * 1000:g} mm"):
         assert needle in TASK["scoring"], needle
-    for needle in (f"{r.T_RUN * 1000:g} mN m", f"{r.K_THREAD / 1000:g} N/mm", f"{g.NUT_PLAY * 1000:g} mm"):
+    for needle in (f"{r.T_RUN * 1000:g} mN m", f"{r.K_THREAD / 1000:g} N/mm", f"{r.T_HEAD * 1000:g} mN m"):
         assert needle in TASK["fidelity"], needle
     assert f"{RUN_LIMIT:,} steps" in TASK["run_limit"]
 

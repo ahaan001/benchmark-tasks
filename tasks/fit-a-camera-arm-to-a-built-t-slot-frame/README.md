@@ -102,14 +102,13 @@ no meshes, CAD files, textures or other third-party assets in this folder. The r
   the foot's centre, side plate, D405 as a 42 x 42 x 23 mm box of 60 g. The 6.4 mm foot is chosen so that an M6 x 16 screw's end is
   flush with the nut's underside exactly when the nut hangs at the right height: that is how the nuts are set for a trial.
 - **Screws** (two hinges in the foot): ISO 4762 heads, 10 mm across and 6 mm high. Each head is a floor and six slabs round a hex socket
-  5.1 mm across flats and 3.5 mm deep, so the only thing that turns a screw is a hex blade in its socket. The screws have no play in
-  the foot's 6.6 mm holes; see the nuts.
+  5.1 mm across flats and 3.5 mm deep, so the only thing that turns a screw is a hex blade in its socket. The foot's holes are printed
+  6.0 mm, a light push fit on the screws: a screw stays where it is put, turns against 20 mN m (estimated) and has no play, as a hinge has none.
 - **Nuts** (each a slide along its screw and a hinge on that slide): 80/20 3931, flange 15.75 x 7.75 x 4.57 mm with bevelled ends, boss
   7.82 mm long and 1.5 mm high, both as convex hulls. Two diagonally opposite corners of flange and boss are cut back, as on the part
   (radius 3.6 mm on the boss and 3.0 mm on the flange, estimated from the catalog drawing, which gives no radii): lengthwise in the
   opening the boss can turn 92.7 degrees clockwise and 5.7 degrees the other way before its square corners meet the lips. The colliders
-  are 0.3 mm narrower than the part (7.45 mm): that stands for the 0.3 mm of play each M6 screw has in its 6.6 mm hole, which a hinge
-  does not have. The ridges on the flange's top are not modelled; nut on aluminium has friction 0.6.
+  have the part's own width. The ridges on the flange's top are not modelled; nut on aluminium has friction 0.6.
 - **Driver** (free body, 79 g): Wera 454 HF, 5 x 100 mm. A 4.98 mm hex blade as a convex hull, a neck 30 x 22 x 21 mm that a gripper
   takes by its two flat sides, the 99 mm bar and the 20 mm short arm. The split of the 49 mm handle into neck and bar is ours. The
   blade's tip is chamfered 0.7 mm over its last millimetre; a real tip's chamfer is about 0.3 mm. The holding ball in the tip is not
@@ -121,11 +120,12 @@ no meshes, CAD files, textures or other third-party assets in this folder. The r
 
 PhysX cannot cut an M6 thread. Each nut therefore rides its screw on a rule, run every control step in `task.py` from `tslot_rule.py`:
 
-1. A hinge with 5 mN m of friction joins the nut to its screw, so a free nut goes round with the screw. (On the real parts, one turn
-   of thread-seal tape on the screw gives that drag and keeps a nut where it is set while the bracket is carried.)
+1. A hinge with 10 mN m of friction joins the nut to its screw, so a free nut goes round with the screw, and a nut that rubs on a lip
+   on its way into the slot stays lengthwise. (On the real parts, one turn of thread-seal tape on the screw gives that drag.)
 2. Whatever the nut turns on its screw moves it along the screw: 1 mm a turn, through a spring of 40 N/mm. A nut stopped by the slot's
    lips is pulled against them harder with every further turn, and that pull clamps the foot to the bar.
-3. The torque the screw takes rises with that pull: 5 mN m + 0.2 x 6 mm x clamp load. Half a turn past contact is 20 N and 29 mN m.
+3. The torque the screw takes rises with that pull: 10 mN m + 0.2 x 6 mm x clamp load. Half a turn past contact is 20 N and 34 mN m,
+   on top of the 20 mN m of the screw in its hole.
 
 Nothing in the rule knows where the slot is. Whether a nut passes the opening, how far it swings, what stops it and what it is drawn up
 against are all contact between the nut's hulls and the bar's boxes. Run up lengthwise, a nut jams against the foot and its screw goes
