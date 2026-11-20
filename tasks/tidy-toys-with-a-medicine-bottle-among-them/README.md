@@ -67,16 +67,17 @@ TBD after the simulator runs.
 The demo is a scripted reference, not a policy. It reads the poses of the vial, the cap and the toys and the angles of the lid,
 the hasp and the dials, all of which the cameras show. It never reads the scorer.
 
-1. The left hand takes the vial round its body, 3 cm up, from behind it on the left, and holds it.
+1. The left hand takes the vial round its body, 2 cm up, from the robot's side of it, and holds it.
 2. The right hand takes the cap from the mat, carries it over the neck, sets it square on the neck and turns it 15 degrees: it is
    on. It pushes down until the cap is on its seat and turns 75 degrees more: it snaps.
-3. The left hand lets go. The right hand lifts the closed vial by its cap, carries it over the lock box's rim and stands it on
-   the floor of the box, in its front half.
-4. The right hand, fingers closed and leaning 45 degrees, comes down 2 cm behind the open lid's top edge and pushes it forward
-   past upright. The lid falls shut and the hasp swings down in front of the lock.
-5. With fingers pitched 55 degrees forward it presses the hasp into the slot, then sets its fingertips on the middle dial and
-   draws them 16 mm down.
-6. Meanwhile the left hand puts the block and the two bricks in the basket. Both arms move clear.
+3. The left hand lets go. The right hand lifts the closed vial by its cap, carries it over the lock box's rim, lowers it into
+   the front half of the box, beside the hasp that sticks out of the open lid, and lets it go 2 cm above the floor: lower, the
+   wrist would meet the open lid's top edge.
+4. The right hand, fingers closed and leaning 45 degrees, comes down 2 cm behind the open lid's top edge, beside the hasp, and
+   pushes it forward past upright. The lid falls shut and the hasp swings down in front of the lock.
+5. With fingers pitched 55 degrees forward it presses the hasp into the slot, then presses its fingertips on the lock's face
+   under the middle dial and draws them 16 mm up over the dial. If no dial has turned it does so again, pressing harder.
+6. Once the vial has left the mat, the left hand puts the block and the two bricks in the basket. Both arms move clear.
 
 ```bash
 python demokit.py task.py OUT                                   # the full-score run, with video
@@ -84,9 +85,12 @@ python demokit.py task.py OUT_checks --mode none,literal,toys_only,uncapped,no_d
 python test_task.py                                             # the rules, the text and the demo, with no simulator
 ```
 
-Mechanism tests, 200 control steps or fewer each: `--mode settle` (the parts at rest), `--mode cap` (hold, cap on, snapped,
-lifted by its cap), `--mode lid`, `--mode toys` (one pick and drop), and `TIDY_START=lid_down ... --mode lock` (the hasp and the
-dials alone). `TIDY_START` changes the start only for that test.
+Mechanism tests, 200 control steps or fewer each: `--mode settle` (the parts at rest), `--mode cap` (the cap taken, set on the
+free-standing vial's neck and turned on), `TIDY_START=cap_on ... --mode snap` (the vial held, the cap pushed down and turned
+until it snaps, the vial let go), `--mode lid`, `--mode toys` (one pick and drop), `TIDY_START=lid_down ... --mode
+lock` (the hasp) and `TIDY_START=lid_down ... --mode dials` (the dials). `TIDY_START` changes the start only for that test.
+`python dryrun.py full --clear` runs the demo on the stand-in and lists how near each arm's collision hulls come to everything
+in the scene and to the other arm.
 
 ## Run a trial
 

@@ -35,7 +35,7 @@ CAP_R = 0.0235
 CAP_H = 0.015
 CAP_TOP_T = 0.0015
 CAP_MASS = 0.004
-CAP_XY = (0.27, -0.09)
+CAP_XY = (0.30, -0.11)
 CAP_SEAT_Z = VIAL_CAPPED_H - CAP_H  # the cap's rim this high above the vial's underside when it has snapped: it adds 3 mm to the height (pub)
 
 # -- the tablets: Zeebo Placebo Tablets, 10 mm round (pub); thickness and weight (est) ----------------------------------------------
@@ -48,7 +48,7 @@ BLOCK_MASS = 0.040  # basswood (est)
 BRICK = (0.0636, 0.0318, 0.0192)  # LEGO DUPLO 2 x 4: twice a LEGO brick's 31.8 x 15.8 x 9.6 mm (derived from LEGO's "twice the size")
 STUD_R, STUD_H, STUD_PITCH = 0.0047, 0.0045, 0.016  # (est)
 BRICK_MASS = 0.012  # (a catalogue figure)
-TOYS = {"block": (0.14, 0.06), "brick_red": (0.36, 0.07), "brick_yellow": (0.15, -0.06)}
+TOYS = {"block": (0.14, 0.10), "brick_red": (0.36, 0.08), "brick_yellow": (0.26, 0.10)}  # left of the vial: the holding hand comes in over the mat's near side
 
 # -- the toy basket: IKEA TROFAST storage box 105.820.93 ----------------------------------------------------------------------------
 BASKET = (11.75 * IN, 7.75 * IN, 4.0 * IN)  # along x, along y, height (pub)

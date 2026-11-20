@@ -38,6 +38,7 @@ DT = 1.0 / d.CONTROL_HZ
 LAG, FINGER_LAG = 0.35, 0.5
 BOXO = task.BOXO + UP  # the lock box's frame, in the world
 LID_REACH = float(np.linalg.norm(g.lid_top_point(0.0) - g.LID_HINGE))
+DIAL_STRIP = math.sqrt(g.DIAL_R**2 - (g.DIAL_R - g.DIAL_PROUD) ** 2)  # half the height of a dial's exposed strip: 3.4 mm
 HALF = {"vial": g.VIAL_RO, "cap": g.CAP_R, "block": g.BLOCK / 2, "brick_red": g.BRICK[1] / 2, "brick_yellow": g.BRICK[1] / 2}
 TALL = {"vial": g.VIAL_H, "cap": g.CAP_H, "block": g.BLOCK, "brick_red": g.BRICK[2], "brick_yellow": g.BRICK[2]}
 
@@ -154,7 +155,9 @@ class World:
 
     def let_go(self, name):
         if name == "cap" and self.thread_on:
-            return  # it stays on the vial
+            if "vial" in self.held:
+                return  # it stays on the held vial
+            name = "vial"  # the vial that hung from it comes down, and the cap with it
         pos, rot = self.body[name]
         if name == "vial" and self.thread_on and "cap" in self.held:
             return  # it hangs from the held cap
@@ -217,9 +220,10 @@ class World:
                     gap = (hasp_hinge[0] - g.HASP[2]) - (tips[0] + 0.004)  # from the hasp's home face to the fingertips' front
                     if gap > -0.02:
                         self.hasp = min(self.hasp, max(0.0, math.degrees(math.asin(min(1.0, max(gap, 0.0) / lever)))))
-            for k in range(3):  # fingertips drawn across a dial turn it
+            edge = tips + task.TIP_LEAD  # the pitched fingertips' leading edge, 8 mm wide
+            for k in range(3):  # drawn over a dial's exposed strip, it turns the dial
                 at = BOXO + g.dial_at(k)
-                if tips[0] + 0.004 >= at[0] - g.DIAL_R - 0.001 and abs(tips[1] - at[1]) <= g.DIAL_W / 2 + 0.006 and abs(tips[2] - at[2]) <= 0.014:
+                if edge[0] >= at[0] - g.DIAL_R and abs(edge[1] - at[1]) <= g.DIAL_W / 2 + 0.002 and abs(edge[2] - at[2]) <= DIAL_STRIP:
                     self.dials[k] += math.degrees((last_z - tips[2]) / g.DIAL_R)
                     self.note(f"{side} fingertips are on dial {k}")
         if self.caught:
@@ -240,6 +244,100 @@ class World:
 class Ctx(d.Ctx):
     def observed(self, side):
         return np.r_[WORLD.q[side], WORLD.f[side] / FINGER_OPEN]
+
+
+# -- clearances (--clear): what the kinematic world cannot feel ----------------------------------------------------------------------
+def _labelled(method):
+    def run(self, *a, **k):
+        if "label" in k:
+            self.label = k["label"]
+        return (yield from method(self, *a, **k))
+    return run
+
+
+for _name in ("move", "servo", "turn", "arc", "open", "close"):
+    setattr(d.Arm, _name, _labelled(getattr(d.Arm, _name)))
+
+
+def _shell(size, step=0.015) -> np.ndarray:
+    """Points over a box's surface, in its frame."""
+    axes = [np.linspace(-v / 2, v / 2, max(2, int(math.ceil(v / step)) + 1)) for v in size]
+    pts = np.array(np.meshgrid(*axes, indexing="ij")).reshape(3, -1).T
+    return pts[np.any(np.abs(np.abs(pts) - np.asarray(size) / 2) < 1e-9, axis=1)]
+
+
+class Clearance:
+    """The least distance between each arm's collision hulls and each thing in the scene, by the primitive the arm was in, and between
+    the two arms. Fingertips on what they handle read about 0; a round thing is taken as a box 0.85 of its width."""
+
+    def __init__(self):
+        from yam_arena import analysis
+        from yam_arena.constants import ARM_JOINTS, FINGER_JOINTS
+
+        self.an, self.joints, self.least, self.arms = analysis, (ARM_JOINTS, FINGER_JOINTS), {}, {}
+
+    def hulls(self, world, side):
+        q = {n: float(v) for n, v in zip(self.joints[0], world.q[side])} | {n: float(world.f[side]) for n in self.joints[1]}
+        return self.an.world_hulls(self.an.fk_link_poses_world(q, station.BASES[side]))
+
+    def things(self, world) -> list:
+        """(name, centre, rotation, size) in the world."""
+        eye = np.eye(3)
+        out = [("mat", np.array([*g.MAT_XY, g.MAT[2] / 2]) + UP, eye, g.MAT), ("table", np.array([0.3, 0.0, -0.05]) + UP, eye, (2.0, 2.0, 0.1))]
+        out += [(f"basket{k}", np.array(c) + [*g.BASKET_XY, 0.0] + UP, eye, sz) for k, (c, sz) in enumerate(g.walls(g.BASKET, g.BASKET_WALL, g.BASKET_WALL))]
+        out += [(f"box{k}", np.array(c) + BOXO, eye, sz) for k, (c, sz) in enumerate(g.box_base_boxes())]
+        out.append(("lock plate", np.array(g.LOCK_PLATE[0]) + BOXO, eye, g.LOCK_PLATE[1]))
+        swing = g.lid_rot(world.lid)
+        out += [(f"lid{k}", g.on_lid(c, world.lid) + BOXO, swing, sz) for k, (c, sz) in enumerate(g.lid_boxes())]
+        (hc, hs), off = g.hasp_box(), g.hasp_rot(world.hasp)
+        out.append(("hasp", g.on_lid(off @ (np.array(hc) - g.HASP_HINGE) + g.HASP_HINGE, world.lid) + BOXO, swing @ off, hs))
+        for name, (pos, rot) in world.body.items():
+            wide = 0.85 * 2 * HALF[name] if name in ("vial", "cap") else None
+            size = (wide, wide, TALL[name]) if wide else (g.BLOCK,) * 3 if name == "block" else g.BRICK
+            out.append((name, pos + rot @ np.array([0.0, 0.0, TALL[name] / 2]), rot, size))
+        return out
+
+    def sample(self, world, ctx):
+        an = self.an
+        sets = {side: self.hulls(world, side) for side in ("left", "right")}
+        labels = {side: getattr(ctx.arm(side), "label", "start") for side in sets}
+        for name, centre, rot, size in self.things(world):
+            size = np.asarray(size, float)
+            reach = float(np.linalg.norm(size)) / 2 + 0.04
+            shell = _shell(size) @ np.asarray(rot).T + centre if max(size) < 0.5 else None
+            for side, hulls in sets.items():
+                best, link = 0.04, None
+                for part, h in hulls:
+                    if name == "table" and not part.startswith(("tip", "gripper")):
+                        continue
+                    if np.min(np.linalg.norm(h.vertices - centre, axis=1)) > reach:
+                        continue
+                    dist = float(an.box_signed_distance(h.vertices, np.asarray(centre), np.asarray(rot), size).min())
+                    if shell is not None:
+                        dist = min(dist, float(an._signed(shell, h).min()))
+                    if dist < best:
+                        best, link = dist, part
+                key = (side, labels[side], name)
+                if link is not None and best < self.least.get(key, (0.04, None))[0]:
+                    self.least[key] = (best, link)
+        dist, pair = an.hull_set_distance(sets["left"], sets["right"])
+        key = (labels["left"], labels["right"])
+        if pair is not None and dist < self.arms.get(key, (0.04, None))[0]:
+            self.arms[key] = (dist, pair)
+
+    def table(self, under=0.020):
+        for side in ("left", "right"):
+            print(f"-- {side} arm: hulls within {under * 1000:.0f} mm of something, by primitive")
+            for (s, label, name), (dist, link) in self.least.items():
+                if s == side and dist < under:
+                    print(f"   {label:42s} {name:13s} {dist * 1000:6.1f} mm  {link}")
+        print(f"-- arm to arm, within {under * 1000:.0f} mm")
+        for (ll, rl), (dist, pair) in self.arms.items():
+            if dist < under:
+                print(f"   left '{ll}' / right '{rl}': {dist * 1000:.1f} mm  {pair}")
+
+
+CLEAR = Clearance() if "--clear" in sys.argv else None
 
 
 def thread_on(name, on):
@@ -290,6 +388,8 @@ def run(mode, max_steps=4000, hold_s=2.0):
             except StopIteration:
                 ended = steps
         WORLD.step(ctx)
+        if CLEAR and steps % 2 == 0:
+            CLEAR.sample(WORLD, ctx)
         task.TRIAL.step(env)
         steps += 1
         ctx.t += DT
@@ -312,3 +412,5 @@ if __name__ == "__main__":
     for mode in (sys.argv[1].split(",") if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else ["full"]):
         print(f"\n===== {mode}")
         run(mode)
+        if CLEAR:
+            CLEAR.table()
