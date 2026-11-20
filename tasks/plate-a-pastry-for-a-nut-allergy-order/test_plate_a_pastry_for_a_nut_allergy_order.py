@@ -401,7 +401,7 @@ def demo_cases() -> None:
             st["purple_tongs"] = tongs("purple_tongs", (x + ahead, y), jaw_low, closed)
             if t_grasp <= t < t_drop:
                 riding = True
-                st["plain_1"] = croissant("plain_1", (x + ahead, y - belly), jaw_low - 0.004)
+                st["plain_1"] = croissant("plain_1", (x + ahead, y - belly), jaw_low - T.JAWS_OVER)
             elif riding:
                 riding = False
                 st["plain_1"] = croissant("plain_1", (x + ahead, y - belly), ON_PLATE)
@@ -430,7 +430,7 @@ def demo_cases() -> None:
 
 def jaws_on(closed: float, along: float = 0.0) -> dict[str, float]:
     """The gap between each purple jaw and plain_1 on its board, the jaws 4 mm above the board round it."""
-    st = tongs("purple_tongs", (P1[0] + along, P1[1] + T.SIDE * T.BELLY), T.BOARD[2] + 0.004, closed)
+    st = tongs("purple_tongs", (P1[0] + along, P1[1] + T.SIDE * T.BELLY), T.BOARD[2] + T.JAWS_OVER, closed)
     food = T.pieces("plain_1", croissant("plain_1", P1, T.BOARD[2]))
     jaws = [p for p in T.pieces("purple_tongs", st) if ":jaw" in p.tag]
     return {a: geo.gap(food, [p for p in jaws if p.tag.startswith(a)], reach=0.03) for a in ("arm_l", "arm_r")}

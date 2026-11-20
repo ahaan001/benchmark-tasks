@@ -121,16 +121,21 @@ The zeros for nut contact stick even if everything is put back. Only a real epis
 
 ## The tongs and croissants in the simulator
 
-- **Tongs.** Each pair is one loose jointed part: the bent end is the body and each arm (strip, scalloped jaw of three
-  plates, coated handle) is a link on a hinge at the bend, sprung to its free position at 6 N m/rad. One-piece tongs
-  have no stop at the free opening; the gripper holds them only by squeezing the arms together, and squeezing harder
-  closes the jaws. The open jaws are 10.8 cm across outside, as listed for the product. The spring is an estimate
-  (a 0.9 mm by 20 mm stainless strip in bending gives about 7 N at mid-handle to close them; America's Test Kitchen
-  measured 2.0 to 3.7 N on lighter spring tongs). Arms are 4 mm thick here (0.9 mm real) so contacts hold.
-- **The hidden flat.** A rigid handle would meet a rigid finger pad along one edge, where real rubber on a soft coating
-  beds down flat. Each handle therefore carries a 40 mm flat that collides and is not drawn, square to a pad when the
-  arms are squeezed for carrying. It adds no grip a real pair lacks.
-- **Croissants.** A drawn mesh (a ridged spindle, 14 x 6.4 x 4.5 cm) over eight convex collider pieces that follow
+- **Tongs.** Each pair is one loose jointed part of two bodies: one arm with the bend, and the other arm on a hinge at
+  the bend, sprung to the free opening at 3 N m/rad. An arm is a strip, a scalloped jaw of three plates and a coated
+  handle. One-piece tongs have no stop at the free opening; the gripper holds them only by squeezing the arms
+  together, and squeezing harder closes the jaws. The open jaws are 10.8 cm across outside and the pair weighs
+  0.29 lb, as listed for the product. Each arm's mass centre is 16 cm from the bend, where a 20 gauge strip, the jaw
+  plates and the coating put it for that weight. Estimates: the spring (a 20 gauge, 20 mm strip in bending needs
+  about 6 N on each handle at mid-length to close; America's Test Kitchen measured 2.0 to 3.7 N on lighter spring
+  tongs), the strip's width, and the jaws' set: each is turned in 6 degrees, so the two lie parallel on a croissant.
+  Arms are 4 mm thick here (0.95 mm real) so contacts hold.
+- **Soft contact.** A rubber pad beds onto a coated handle and a crust gives under a jaw. Rigid bodies meet at a
+  point or an edge, and the simulator gives such a contact no friction against twisting, so a held pair would swing
+  in the pads. The coated handles and the croissants therefore carry a contact patch radius (8 mm and 10 mm; PhysX
+  `minTorsionalPatchRadius`), which adds twisting friction of friction x force x radius to their contacts. Nothing
+  else helps the grip: no hidden shapes, no attachment, no scripted pose.
+- **Croissants.** A drawn mesh (a ridged crescent, 14 x 6.4 x 4.5 cm) over eight convex collider pieces that follow
   it within 3 mm. Almond croissants add drawn-only icing sugar and sliced almonds.
 - **Plate.** A flat floor and sixteen rim plates collide; the drawn plate is a turned profile.
 
