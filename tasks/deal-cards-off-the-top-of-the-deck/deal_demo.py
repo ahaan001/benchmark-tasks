@@ -6,9 +6,12 @@ One card at a time, with the fingers 4 cm apart and pointing straight down:
 1. Both fingertips come down on the back half of the top card and push it forward until most of it hangs over the
    pack's front edge, the tips stopping short of the edge so they never lever on the overhang.
 2. The tips lift. The card tips over the edge and comes to rest leaning, its front edge on the felt.
-3. The hand turns to the card's heading, the tips come down on the card near that front edge and slide it across the
-   felt to its box, turning it square on the way. Its back end leaves the pack and the card drops flat.
-4. The tips lift straight up.
+3. The tips come down on the card near that front edge and draw it straight along its own length until its back end
+   has left the pack and it lies flat on the felt. Drawn by its front end it follows like a trailer; pulled sideways
+   from there it would swing round.
+4. The tips move to the middle of the card and slide it across the felt to its box. Carried by its middle it keeps
+   its heading.
+5. The tips lift straight up.
 
 ``DEAL_MODE`` (environment variable): ``full`` (four cards), ``one`` (one card to box 2), and two poor deals to
 check the scorer. ``light``: the first touch stops 1 mm above the card, so the push carries nothing; the demo then
@@ -35,7 +38,9 @@ DEBUG = bool(os.environ.get("TASK_DEBUG"))
 HALF_GAP = 0.020  # each fingertip this far from the card's centre line
 GRIP = (HALF_GAP - 0.0015) / 0.047  # share of fully open: the tips' inner faces are 47 mm from the centre when open
 PRESS = -0.001 if MODE == "light" else 0.0007  # the tips are commanded this far into the surface they ride on
-PRESS_FELT = 0.0008
+PRESS_DRAW = 0.0005  # second touch, on the leaning card
+PRESS_FELT = 0.0008  # third touch, on the card lying on the felt
+CLEAR_PACK = 0.005  # the card is drawn until its back edge is this far past the pack
 BACK = 0.032  # the tips land this far behind the card's centre
 SHORT = 0.008  # ... and stop this far short of the pack's front edge
 FRONT = 0.015  # second touch: this far behind the card's front edge
@@ -54,7 +59,7 @@ def heading(axis) -> float:
 def jobs(cards: list[str]) -> list[tuple[str, str, tuple[float, float]]]:
     """(arm, card, box centre) in dealing order."""
     if MODE in ("one", "light", "edge"):
-        return [("left", cards[0], L.BOXES[1])]
+        return [("left", cards[0], L.BOXES[int(os.environ.get("DEAL_BOX", "2")) - 1])]
     return [("left", cards[0], L.BOXES[0]), ("left", cards[1], L.BOXES[1]),
             ("right", cards[2], L.BOXES[2]), ("right", cards[3], L.BOXES[3])]
 
@@ -172,21 +177,40 @@ class Dealer:
         elif self.phase == "over the front":
             g = top + axis * (L.CARD_L / 2 - FRONT)
             # the hand turns to the card's heading, so both fingertips sit across it
-            if all([self._move(arm, self._tips(g[0], g[1], g[2], PRESS_FELT, 0.012), FREE / 2),
+            if all([self._move(arm, self._tips(g[0], g[1], g[2], PRESS_DRAW, 0.012), FREE / 2),
                     self._turn(arm, heading(axis))]):
                 self._next("touch the front")
         elif self.phase == "touch the front":
             x, y = self.tcp[arm][:2]
+            if self._move(arm, self._tips(x, y, self._surface(pos, rot, x, y), PRESS_DRAW), SLOW) and self._wait(0.2):
+                self._next("draw")
+        elif self.phase == "draw":  # straight along the card's own length, until it lies flat clear of the pack
+            x, y = self.tcp[arm][:2] + axis[:2] / np.linalg.norm(axis[:2]) * PUSH * self.dt
+            self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_DRAW)
+            back = pos[0] - abs(axis[0]) * L.CARD_L / 2 - abs(axis[1]) * L.CARD_W / 2
+            flat = abs(rot[2, 2]) > math.cos(math.radians(2.0)) and top[2] < pack_pos[2]
+            if (flat and back > edge + CLEAR_PACK) or self._wait(4.0):
+                self._next("rise")
+        elif self.phase == "rise":
+            if self.anchor is None:
+                self.anchor = self.tcp[arm].copy()
+            if self._move(arm, self.anchor + [0.0, 0.0, 0.01], 0.08):
+                self._next("over the middle")
+        elif self.phase == "over the middle":
+            if all([self._move(arm, self._tips(top[0], top[1], top[2], PRESS_FELT, 0.01), FREE / 2),
+                    self._turn(arm, heading(axis))]):
+                self._next("touch the middle")
+        elif self.phase == "touch the middle":
+            x, y = self.tcp[arm][:2]
             if self._move(arm, self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT), SLOW) and self._wait(0.2):
                 self._next("slide")
-        elif self.phase == "slide":
+        elif self.phase == "slide":  # fingertips on the card's middle: it is carried without being swung round
             err = np.asarray(box, float) - pos[:2]
             dist = float(np.linalg.norm(err))
             step = min(DRAG * self.dt, dist)
             x, y = self.tcp[arm][:2] + (err / dist * step if dist > 1e-6 else 0.0)
             self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT)
-            self._turn(arm, self.yaw[arm] - heading(axis))  # the card turns with the hand: square it up on the way
-            if (dist < 0.002 and abs(heading(axis)) < math.radians(3.0)) or self._wait(12.0):
+            if dist < 0.002 or self._wait(12.0):
                 self._next("settle")
         elif self.phase == "settle":
             if self._wait(0.3):

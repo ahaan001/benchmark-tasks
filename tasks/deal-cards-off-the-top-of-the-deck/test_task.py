@@ -221,8 +221,7 @@ class StandIn:
     def __init__(self):
         self.pos = {n: np.array([*L.DECK_XY, task._card_z(k)]) for k, n in enumerate(task.CARDS)}
         self.rot = {n: np.eye(3) for n in task.CARDS}
-        self.offset, self.flat, self.rot0 = {}, {}, {}
-        self.skew = {task.CARDS[0]: 35.0, task.CARDS[2]: -20.0}  # degrees: two cards come off the pack askew
+        self.offset = {}
 
     def read(self, names):
         return {n: ((PACK, np.eye(3)) if n == "pack" else (self.pos[n].copy(), self.rot[n].copy())) for n in names}
@@ -235,26 +234,19 @@ class StandIn:
         edge, h = PACK[0] + L.CARD_L / 2, task.DECK_TOP - FELT - L.CARD_T
         if d.phase == "push":
             self.pos[card][0] = max(self.pos[card][0], tip[0] + demo_module().BACK)
-        elif d.phase in ("let go", "over the front") and self.rot[card][2, 0] == 0.0:
+        elif d.phase in ("let go", "over the front") and self.rot[card][2, 0] == 0.0 and self.pos[card][2] > FELT + 0.001:
             over = self.pos[card][0] + L.CARD_L / 2 - edge
             if over > L.CARD_L / 2:
                 c, s = math.cos(math.asin(h / over)), h / over
                 self.rot[card] = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
                 front = np.array([edge + over * c, self.pos[card][1], FELT])
                 self.pos[card] = front - self.rot[card][:, 0] * L.CARD_L / 2 + self.rot[card][:, 2] * L.CARD_T / 2
-                self.rot[card] = yaw(self.skew.get(card, 0.0)) @ self.rot[card]  # as if one fingertip had slipped
-        elif d.phase == "slide":
-            if card not in self.offset:
-                self.offset[card] = (self.pos[card][:2] - tip[:2], d.yaw[arm], self.skew.get(card, 0.0))
-            offset, hand0, card0 = self.offset[card]
-            turned = math.degrees(d.yaw[arm] - hand0)  # the card turns with the hand that rides on it
-            self.pos[card][:2] = tip[:2] + yaw(turned)[:2, :2] @ offset
-            self.rot[card] = yaw(card0 + turned) @ (np.eye(3) if self.flat.get(card) else self.rot0[card])
-            if not self.flat.get(card) and self.pos[card][0] - L.CARD_L / 2 > edge - 0.002:
-                self.flat[card] = True
-                self.pos[card][2] = FELT + L.CARD_T / 2
-        if d.phase == "touch the front":
-            self.rot0[card] = yaw(-self.skew.get(card, 0.0)) @ self.rot[card]
+        elif d.phase in ("draw", "slide"):
+            key = (card, d.phase)
+            self.offset.setdefault(key, self.pos[card][:2] - tip[:2])
+            self.pos[card][:2] = tip[:2] + self.offset[key]
+            if self.pos[card][0] - L.CARD_L / 2 > edge - 0.002:
+                self.rot[card], self.pos[card][2] = np.eye(3), FELT + L.CARD_T / 2
 
 
 def demo_module():
