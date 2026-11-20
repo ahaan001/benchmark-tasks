@@ -82,7 +82,7 @@ the demo's modes end as designed:
 | `literal` | puts the can in the bin as it stands, tab bare | 0, stowed bare |
 | `clip_only` | fits the clip, leaves the can on the mat | 0.5 |
 | `held` | everything, but never lets go of the can | 0.5 |
-| `short` | slides the clip on 8 mm short of home, then stows the can | 0, stowed bare (the clip comes off) |
+| `short` | slides the clip on 8 mm short of home, then stows the can | 0, stowed bare (the clip rides on the tab, short of its catch) |
 | `press` | holds the can and presses the tab with closed fingertips | 0, fired |
 
 ## The demo

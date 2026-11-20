@@ -541,7 +541,13 @@ def demo_script(ctx):
         tcp = lambda tips: np.asarray(tips, float) - 0.013 * a  # noqa: E731
         yield from right.move(tcp(rear + [0.0, 0.0, 0.05]), grip=grip, finger=FINGER_CLOSED, t=T(3.0), label="over the tab")
         yield from right.move(tcp(rear + [0.0, 0.0, 0.006]), t=T(1.0), label="onto the tab")
-        yield from right.move(tcp(rear - [0.0, 0.0, 0.012]), t=T(1.0), label="press the tab")
+        cmd = ik.tcp_pose(right.q, right.base)[0]
+        for _ in range(60):  # lean on it 1 mm a step until it is two thirds down: the arm is soft, and the tab's spring pushes back with 4 to 6 N
+            if ctx.deg("can", "tab") >= 6.0:
+                break
+            cmd = cmd - [0.0, 0.0, 0.001]
+            right._solve(cmd, right.grip.rot)
+            yield
         yield from right.wait(0.5)
         report(env, "tab pressed: ")
         yield from right.move(tcp(rear + [0.0, 0.0, 0.05]), t=T(1.0), label="off the tab")
