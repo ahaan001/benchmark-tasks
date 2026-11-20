@@ -478,6 +478,7 @@ def demo_script(ctx):
         return
     if mode == "toys":  # one pick and drop
         yield from to_basket(left, "block", 0.030, g.BLOCK)
+        report(env, "toy dropped: ")
         return
 
     def medicine():
