@@ -366,7 +366,7 @@ ROLL = 6.0  # degrees the camera end is tipped up: the nuts' outer lower edges t
 EDGE_AT = -0.001  # those edges are brought over the opening, this far across its middle line
 HOOK = 0.0018  # and go this far down into it
 PUSH, PUSH_STEP = 0.009, 0.0002  # then the hand's command goes this far outward, at 4 mm a second: what the foot does not follow is a light push on the outer lip
-STUCK = 0.006  # a part that has not followed the command this far is held by something. Under 3 mm it may only be the arm's own friction
+LEAD = 0.004  # the furthest a lowering command runs ahead of what the hand holds: the arm follows late and in jumps of 2 to 3 mm
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
 TURN_RATE = 45.0  # degrees a second
 MODES = ("full", "none", "held", "unheld", "one_screw", "off_line", "settle", "take", "drive", "seat", "back")
@@ -398,7 +398,7 @@ def demo_script(ctx):
     threads = [r.Thread(), r.Thread()]  # the demo's own count of how far each thread is wound, from the joints it can see
     lags = [0.0, 0.0]
     hold_grip = d.tilted(HOLD_TILT, g.MOUNT_YAW - 90.0)
-    pace = {"take": 0.6, "drive": 0.45, "seat": 0.5, "back": 0.4}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
+    pace = {"take": 0.6, "drive": 0.4, "seat": 0.45, "back": 0.4}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
     T = lambda seconds: seconds * pace  # noqa: E731
     line_x = g.LINE_X + (0.004 if mode == "off_line" else 0.0)
 
@@ -429,6 +429,28 @@ def demo_script(ctx):
     def nudge(arm, step) -> None:
         """Shift an arm's command by a small step, keeping its grip."""
         arm._solve(ik.tcp_pose(arm.q, arm.base)[0] + np.asarray(step, float), arm.grip.rot)
+
+    def ease_down(arm, read, low: float, steps: int = 240, step: float = 0.00025):
+        """Lower an arm until `read()`, a height, is at or under `low`. The arm follows a command late and in jumps, so the command never
+        runs more than LEAD ahead of what it holds, and it is only called held up when nothing has come down for a second and a half at
+        that lead. Ends with the lead taken off again. Returns whether it got down."""
+        lead, quiet, done = 0.0, 0, False
+        for _ in range(steps):
+            h = read()
+            if h <= low:
+                done = True
+                break
+            if lead < LEAD:
+                nudge(arm, (0.0, 0.0, -step))
+                lead += step
+            yield
+            drop = h - read()
+            lead = max(lead - max(drop, 0.0), 0.0)
+            quiet = quiet + 1 if drop < 0.00003 and lead >= LEAD - 1e-9 else 0
+            if quiet >= 30:
+                break
+        nudge(arm, (0.0, 0.0, max(lead - 0.001, 0.0)))  # all but a millimetre of the lead off again
+        return done
 
     # -- the left hand: the bracket ------------------------------------------------------------------------------------------------------
     def take_bracket(lift: float = CARRY_UP):
@@ -500,14 +522,7 @@ def demo_script(ctx):
         yield from left.servo(over, tol=0.0012, timeout=T(1.5), gain=0.3, read=edge_point, label="the nuts' edges over the opening")
         e = low_edge()
         print(f"[tslot] tipped {tipped():.1f} degrees; the nuts' outer edges {e[1] * 1000:+.2f} mm across the slot, {e[2] * 1000:+.2f} mm from the bar's face", flush=True)
-        lead = 0.0
-        for _ in range(80):  # the edges down into the opening
-            z = low_edge()[2]
-            if z <= -HOOK or lead > STUCK:
-                break
-            nudge(left, (0.0, 0.0, -0.0005))
-            yield
-            lead += 0.0005 - max(z - low_edge()[2], 0.0)
+        yield from ease_down(left, lambda: low_edge()[2], -HOOK)  # the edges down into the opening
         e = low_edge()
         if e[2] > -0.0006:
             print(f"[tslot] the nuts' edges stay {e[2] * 1000:+.2f} mm from the bar's face, {e[1] * 1000:+.2f} mm across: on a lip", flush=True)
@@ -526,20 +541,23 @@ def demo_script(ctx):
             yield
         e = low_edge()
         print(f"[tslot] drawn {(ys[0] - ys[-1]) * 1000:.1f} mm outward: the nuts' outer edges {e[1] * 1000:+.2f} mm across (the outer lip is at {-g.SLOT_OPEN / 2 * 1000:.2f}), {e[2] * 1000:+.2f} mm from the face", flush=True)
-        stuck, last = 0, height()
-        for _ in range(240):  # level and down together
+        stuck, lead = 0, 0.0
+        for _ in range(400):  # level and down together
             roll, h = tipped(), height()
             if h <= 0.0008 and abs(roll) < 1.0:
                 break
             if abs(roll) > 0.3:
                 tilt(-float(np.clip(0.4 * roll, -0.6, 0.6)))
-            if abs(roll) < 3.0 and h > 0.0008:
-                nudge(left, (0.0, 0.0, -0.0004))
+            if abs(roll) < 3.0 and h > 0.0008 and lead < LEAD:
+                nudge(left, (0.0, 0.0, -0.00025))
+                lead += 0.00025
             yield
-            stuck = stuck + 1 if last - height() < 0.00005 and abs(tipped() - roll) < 0.02 else 0
-            last = height()
+            drop = h - height()
+            lead = max(lead - max(drop, 0.0), 0.0)
+            stuck = stuck + 1 if drop < 0.00003 and abs(tipped() - roll) < 0.02 and lead >= LEAD - 1e-9 else 0
             if stuck > 40:  # two seconds with nothing moving
                 break
+        nudge(left, (0.0, 0.0, max(lead - 0.001, 0.0)))
         for _ in range(4):
             yield
         report(env, "nuts in: " if height() <= 0.0008 else "foot NOT flat: ")
@@ -637,14 +655,7 @@ def demo_script(ctx):
                 break
             nudge(right, (float(off[0]), float(off[1]), 0.0))
         yield from right.wait(0.2)
-        lead = 0.0
-        for _ in range(60):
-            depth = float(tip()[2] - socket(k)[0][2])
-            if depth <= 0.0008 or lead > STUCK:
-                break
-            nudge(right, (0.0, 0.0, -0.0005))
-            yield
-            lead = lead + 0.0005 - max(depth - float(tip()[2] - socket(k)[0][2]), 0.0)
+        yield from ease_down(right, lambda: float(tip()[2] - socket(k)[0][2]), 0.0008, steps=120)
         right.trim = np.zeros(3)
         yield from right.wait(0.15)
         head = socket(k)
@@ -681,14 +692,7 @@ def demo_script(ctx):
         hole = np.array([BLOCK_XY[0], BLOCK_XY[1], TOP + g.BLOCK[2]])
         yield from right.move(hole + [0.0, 0.0, 0.02 + g.TIP_TO_TCP], grip=d.down(0.0), t=T(3.0), label="the driver over its block")
         yield from right.servo(hole + [0.0, 0.0, 0.02], tol=0.0008, timeout=2.5, gain=0.3, read=tip, label="the blade over the block's hole")
-        lead = 0.0
-        for _ in range(120):
-            depth = float(tip()[2] - (TOP + g.DRIVER_START[2]))
-            if depth <= 0.002 or lead > 0.006:
-                break
-            nudge(right, (0.0, 0.0, -0.001))
-            yield
-            lead = lead + 0.001 - max(depth - float(tip()[2] - (TOP + g.DRIVER_START[2])), 0.0)
+        yield from ease_down(right, lambda: float(tip()[2] - (TOP + g.DRIVER_START[2])), 0.002, step=0.001)
         yield from right.move(right.at(), finger=-(g.NECK[1] / 2 + 0.012), t=0.5, label="let go of the driver")
         right.trim = np.zeros(3)
         yield from right.move(right.at() + [0.0, 0.0, 0.07], t=T(1.2), label="up off the driver")
