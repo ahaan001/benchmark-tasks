@@ -4,10 +4,14 @@
 """
 import json
 import math
+import os
 import pathlib
 import sys
 
-import numpy as np
+for _threads in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+    os.environ.setdefault(_threads, "1")  # many small products: threads only get in each other's way
+
+import numpy as np  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -259,6 +263,36 @@ def the_demo_on_the_stand_in():
         for mode in ("settle", "cap", "lid", "toys"):
             res = dryrun.run(mode)
             assert res["ended"] is not None and res["ended"] <= 200, (mode, res["ended"])
+
+
+@case
+def the_arms_keep_clear_on_the_demos_route():
+    """What the stand-in cannot feel: the arms' collision hulls against the scene and each other, along the full demo. Fingertips
+    touch what they handle; no other link may come within 8 mm of anything, no fingertip within 15 mm of the basket's walls, and the
+    two arms stay 15 mm apart except fingertip to fingertip over the vial (4 mm)."""
+    try:
+        import yam_arena  # noqa: F401
+    except ImportError:
+        print("   (yam_arena is not on the path: clearances skipped)")
+        return
+    import dryrun
+
+    if dryrun.task.START != "":
+        return
+    dryrun.CLEAR, dryrun.CLEAR_EVERY = dryrun.Clearance(), 4
+    try:
+        dryrun.run("full")
+        clear = dryrun.CLEAR
+    finally:
+        dryrun.CLEAR = None
+    for (side, label, thing), (dist, link) in clear.least.items():
+        if not link.startswith("tip"):
+            assert dist >= 0.008, (side, label, thing, link, round(dist * 1000, 1))
+        elif thing.startswith("basket"):
+            assert dist >= 0.015, (side, label, thing, link, round(dist * 1000, 1))
+    for labels, (dist, pair) in clear.arms.items():
+        least = 0.004 if all(part.startswith("tip") for part in pair) else 0.015
+        assert dist >= least, (labels, pair, round(dist * 1000, 1))
 
 
 if __name__ == "__main__":

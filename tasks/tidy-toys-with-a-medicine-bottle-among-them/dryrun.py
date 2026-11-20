@@ -11,11 +11,15 @@ so it finds wrong calls, unreachable poses, loops that never end, end states tha
 """
 import importlib.util
 import math
+import os
 import pathlib
 import sys
 import types
 
-import numpy as np
+for _threads in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+    os.environ.setdefault(_threads, "1")  # many small products: threads only get in each other's way
+
+import numpy as np  # noqa: E402
 
 TASK_DIR = str(pathlib.Path(__file__).resolve().parent)
 QUIET = "--quiet" in sys.argv
@@ -38,6 +42,7 @@ DT = 1.0 / d.CONTROL_HZ
 LAG, FINGER_LAG = 0.35, 0.5
 BOXO = task.BOXO + UP  # the lock box's frame, in the world
 LID_REACH = float(np.linalg.norm(g.lid_top_point(0.0) - g.LID_HINGE))
+CAMERA = (0.050, 0.050, 0.040)  # a box round a wrist camera and its mount, in the gripper's frame (a D405 is 42 x 42 x 23 mm)
 DIAL_STRIP = math.sqrt(g.DIAL_R**2 - (g.DIAL_R - g.DIAL_PROUD) ** 2)  # half the height of a dial's exposed strip: 3.4 mm
 HALF = {"vial": g.VIAL_RO, "cap": g.CAP_R, "block": g.BLOCK / 2, "brick_red": g.BRICK[1] / 2, "brick_yellow": g.BRICK[1] / 2}
 TALL = {"vial": g.VIAL_H, "cap": g.CAP_H, "block": g.BLOCK, "brick_red": g.BRICK[2], "brick_yellow": g.BRICK[2]}
@@ -72,7 +77,8 @@ class World:
                                                                                ("brick_red", task.BRICK_RED), ("brick_yellow", task.BRICK_YELLOW))}
         self.tablets = np.array(g.tablet_starts())  # in the vial's frame
         self.held = {}  # name -> (side, position in the hand's frame, rotation in the hand's frame)
-        self.thread_on, self.locked, self.rise, self.cap_yaw = task.START == "cap_on", False, r.CAP_RISE, 0.0
+        self.thread_on, self.locked, self.cap_yaw = task.CAP_STARTS_ON, task.START == "capped", 0.0
+        self.rise = 0.0 if self.locked else r.CAP_RISE
         self.lid = 0.0 if task.START == "lid_down" else g.LID_OPEN_DEG
         self.hasp, self.caught, self.dials = g.HASP_REST_DEG, False, [0.0, 0.0, 0.0]
         self.behind, self.last_tip_z, self.notes = {}, {}, []
@@ -259,11 +265,17 @@ for _name in ("move", "servo", "turn", "arc", "open", "close"):
     setattr(d.Arm, _name, _labelled(getattr(d.Arm, _name)))
 
 
+_SHELLS: dict = {}
+
+
 def _shell(size, step=0.015) -> np.ndarray:
     """Points over a box's surface, in its frame."""
-    axes = [np.linspace(-v / 2, v / 2, max(2, int(math.ceil(v / step)) + 1)) for v in size]
-    pts = np.array(np.meshgrid(*axes, indexing="ij")).reshape(3, -1).T
-    return pts[np.any(np.abs(np.abs(pts) - np.asarray(size) / 2) < 1e-9, axis=1)]
+    key = tuple(round(float(v), 6) for v in size)
+    if key not in _SHELLS:
+        axes = [np.linspace(-v / 2, v / 2, max(2, int(math.ceil(v / step)) + 1)) for v in key]
+        pts = np.array(np.meshgrid(*axes, indexing="ij")).reshape(3, -1).T
+        _SHELLS[key] = pts[np.any(np.abs(np.abs(pts) - np.asarray(key) / 2) < 1e-9, axis=1)]
+    return _SHELLS[key]
 
 
 class Clearance:
@@ -277,8 +289,16 @@ class Clearance:
         self.an, self.joints, self.least, self.arms = analysis, (ARM_JOINTS, FINGER_JOINTS), {}, {}
 
     def hulls(self, world, side):
+        """The arm's collision hulls, and a box where its wrist camera is (the simulator's arm has no collider there; a real one has a camera)."""
+        from yam_arena.constants import WRIST_CAM_POS
+
         q = {n: float(v) for n, v in zip(self.joints[0], world.q[side])} | {n: float(world.f[side]) for n in self.joints[1]}
-        return self.an.world_hulls(self.an.fk_link_poses_world(q, station.BASES[side]))
+        poses = self.an.fk_link_poses_world(q, station.BASES[side])
+        rot, pos = poses["gripper"][:3, :3], poses["gripper"][:3, 3]
+        corners = np.array([[sx, sy, sz] for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]) * np.array(CAMERA) / 2 + WRIST_CAM_POS
+        normals = np.vstack([np.eye(3), -np.eye(3)])
+        planes = np.c_[normals @ rot.T, np.r_[np.array(CAMERA) / 2 + WRIST_CAM_POS, np.array(CAMERA) / 2 - WRIST_CAM_POS] + (normals @ rot.T) @ pos]
+        return self.an.world_hulls(poses) + [("camera", self.an.Hull(vertices=corners @ rot.T + pos, planes=planes))]
 
     def things(self, world) -> list:
         """(name, centre, rotation, size) in the world."""
@@ -304,7 +324,7 @@ class Clearance:
         for name, centre, rot, size in self.things(world):
             size = np.asarray(size, float)
             reach = float(np.linalg.norm(size)) / 2 + 0.04
-            shell = _shell(size) @ np.asarray(rot).T + centre if max(size) < 0.5 else None
+            shell = None
             for side, hulls in sets.items():
                 best, link = 0.04, None
                 for part, h in hulls:
@@ -313,17 +333,23 @@ class Clearance:
                     if np.min(np.linalg.norm(h.vertices - centre, axis=1)) > reach:
                         continue
                     dist = float(an.box_signed_distance(h.vertices, np.asarray(centre), np.asarray(rot), size).min())
-                    if shell is not None:
+                    if dist < 0.04 and max(size) < 0.5:  # near: the thing's own surface against the hull's faces too
+                        if shell is None:
+                            shell = _shell(size) @ np.asarray(rot).T + centre
                         dist = min(dist, float(an._signed(shell, h).min()))
                     if dist < best:
                         best, link = dist, part
                 key = (side, labels[side], name)
                 if link is not None and best < self.least.get(key, (0.04, None))[0]:
                     self.least[key] = (best, link)
-        dist, pair = an.hull_set_distance(sets["left"], sets["right"])
+        lo, hi = ({side: np.array([f(h.vertices, axis=0) for _, h in hulls]) for side, hulls in sets.items()} for f in (np.min, np.max))
+        apart = np.maximum(lo["left"][:, None, :] - hi["right"][None, :, :], lo["right"][None, :, :] - hi["left"][:, None, :]).max(axis=2)
         key = (labels["left"], labels["right"])
-        if pair is not None and dist < self.arms.get(key, (0.04, None))[0]:
-            self.arms[key] = (dist, pair)
+        for i, j in zip(*np.nonzero(apart < 0.04)):  # hulls whose bounding boxes are near each other
+            (pl, hl), (pr, hr) = sets["left"][i], sets["right"][j]
+            dist = min(float(an._signed(hl.vertices, hr).min()), float(an._signed(hr.vertices, hl).min()))
+            if dist < self.arms.get(key, (0.04, None))[0]:
+                self.arms[key] = (dist, (pl, pr))
 
     def table(self, under=0.020):
         for side in ("left", "right"):
@@ -338,6 +364,7 @@ class Clearance:
 
 
 CLEAR = Clearance() if "--clear" in sys.argv else None
+CLEAR_EVERY = 2  # control steps between samples
 
 
 def thread_on(name, on):
@@ -388,7 +415,7 @@ def run(mode, max_steps=4000, hold_s=2.0):
             except StopIteration:
                 ended = steps
         WORLD.step(ctx)
-        if CLEAR and steps % 2 == 0:
+        if CLEAR and steps % CLEAR_EVERY == 0:
             CLEAR.sample(WORLD, ctx)
         task.TRIAL.step(env)
         steps += 1

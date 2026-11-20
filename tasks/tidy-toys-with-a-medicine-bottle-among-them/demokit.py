@@ -101,14 +101,6 @@ def tilted(theta_deg: float, phi_deg: float, flip: bool = False) -> Grip:
     return _as_grip(r @ axis_angle_matrix(np.array([0.0, 0.0, 1.0]), math.pi) if flip else r)
 
 
-def side(azimuth_deg: float, down_deg: float) -> Grip:
-    """From the side: the fingers point along `azimuth_deg` (from +x toward +y) and `down_deg` below level, and close across that, level. Round a standing bottle."""
-    az, dn = math.radians(azimuth_deg), math.radians(down_deg)
-    a = np.array([math.cos(az) * math.cos(dn), math.sin(az) * math.cos(dn), -math.sin(dn)])
-    c = np.array([-math.sin(az), math.cos(az), 0.0])
-    return _as_grip(np.column_stack([c, np.cross(a, c), a]))
-
-
 def level(phi_deg: float, flip: bool = False) -> Grip:
     """Fingers level, pointing along `phi_deg` from +x and closing across it, with the palm beside the object and its top open."""
     return tilted(90.0, phi_deg, flip)

@@ -67,12 +67,14 @@ TBD after the simulator runs.
 The demo is a scripted reference, not a policy. It reads the poses of the vial, the cap and the toys and the angles of the lid,
 the hasp and the dials, all of which the cameras show. It never reads the scorer.
 
-1. The left hand takes the vial round its body, 2 cm up, from the robot's side of it, and holds it.
+1. The left hand takes the vial round its body, 2 cm up, from the robot's side of it, fingers 20 degrees below level and the
+   wrist camera on top, and holds it.
 2. The right hand takes the cap from the mat, carries it over the neck, sets it square on the neck and turns it 15 degrees: it is
    on. It pushes down until the cap is on its seat and turns 75 degrees more: it snaps.
-3. The left hand lets go. The right hand lifts the closed vial by its cap, carries it over the lock box's rim, lowers it into
-   the front half of the box, beside the hasp that sticks out of the open lid, and lets it go 2 cm above the floor: lower, the
-   wrist would meet the open lid's top edge.
+3. The left hand lets go. The right hand lifts the closed vial by its cap, carries it over the lock box's rim, turning so that
+   its fingers close across the box's depth, lowers it into the box left of the hasp that sticks out of the open lid, and lets
+   it go 2.5 cm above the floor. Turned so, the wrist and its camera stand clear of the open lid; lower, the fingers would be
+   down between the front and back walls.
 4. The right hand, fingers closed and leaning 45 degrees, comes down 2 cm behind the open lid's top edge, beside the hasp, and
    pushes it forward past upright. The lid falls shut and the hasp swings down in front of the lock.
 5. With fingers pitched 55 degrees forward it presses the hasp into the slot, then presses its fingertips on the lock's face
@@ -87,10 +89,10 @@ python test_task.py                                             # the rules, the
 
 Mechanism tests, 200 control steps or fewer each: `--mode settle` (the parts at rest), `--mode cap` (the cap taken, set on the
 free-standing vial's neck and turned on), `TIDY_START=cap_on ... --mode snap` (the vial held, the cap pushed down and turned
-until it snaps, the vial let go), `--mode lid`, `--mode toys` (one pick and drop), `TIDY_START=lid_down ... --mode
+until it snaps, the vial let go), `TIDY_START=capped ... --mode place` (the closed vial by its cap into the lock box), `--mode lid`, `--mode toys` (one pick and drop), `TIDY_START=lid_down ... --mode
 lock` (the hasp) and `TIDY_START=lid_down ... --mode dials` (the dials). `TIDY_START` changes the start only for that test.
-`python dryrun.py full --clear` runs the demo on the stand-in and lists how near each arm's collision hulls come to everything
-in the scene and to the other arm.
+`python dryrun.py full --clear` runs the demo on the stand-in and lists how near each arm's collision hulls, and a box where
+each wrist camera sits, come to everything in the scene and to the other arm.
 
 ## Run a trial
 
@@ -208,8 +210,7 @@ TBD after the simulator runs. The scene does not depend on the seed; `object_jit
 
 `bodykit.py` is the copy in the accepted tasks `pour-a-pot-with-both-hands` and `pour-ten-counted-tablets-into-a-held-vial` of this
 repository, unchanged; the way the cap catches its joint when it sits lined up on the neck and is turned, the wall panels of the
-vial with a hidden thicker lining, and the side grip that holds the vial follow the second of those tasks. `mechkit.py` and
-`demokit.py` come from the accepted task `heat-shrink-lug`; this copy of `mechkit.py` adds turned box colliders, capsule
-colliders, a centre of mass for a mechanism's frame, `set_gains` and `hold` (a joint held by a spring that gives way above a set
-effort), and this copy of `demokit.py` adds the `side` grip. Third-party assets: none; every shape is built in
-`tidy_geometry.py`.
+vial with a hidden thicker lining, and holding the vial from the side follow the second of those tasks. `mechkit.py` and
+`demokit.py` come from the accepted task `heat-shrink-lug`; `demokit.py` is unchanged, and this copy of `mechkit.py` adds turned
+box colliders, capsule colliders, a centre of mass for a mechanism's frame, `set_gains` and `hold` (a joint held by a spring
+that gives way above a set effort). Third-party assets: none; every shape is built in `tidy_geometry.py`.

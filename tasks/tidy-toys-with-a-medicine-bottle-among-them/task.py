@@ -45,10 +45,11 @@ TABLET_NAMES = tuple(f"tablet{i}" for i in range(g.N_TABLETS))
 
 # Start variants for the mechanism tests in the README (never the submitted demo, which starts as the setup says):
 # TIDY_START=lid_down has the lock box's lid start shut, its hasp hanging in front of the lock; TIDY_START=cap_on has the cap start on
-# the vial, its lugs in the bayonets, not yet pushed down or locked.
+# the vial, its lugs in the bayonets, not yet pushed down or locked; TIDY_START=capped has it start locked on.
 START = os.environ.get("TIDY_START", "")
-if START not in ("", "lid_down", "cap_on"):
+if START not in ("", "lid_down", "cap_on", "capped"):
     raise ValueError(f"TIDY_START={START!r}")
+CAP_STARTS_ON = START in ("cap_on", "capped")
 
 
 def at(xy, z: float = 0.0) -> tuple:
@@ -103,7 +104,8 @@ BASKET = m.fixed("basket", at(g.BASKET_XY), *boxes("basket", g.walls(g.BASKET, g
 LOCK_BOX = lock_box()
 VIAL = Body.build("vial", pos=at(g.VIAL_XY, ON_MAT), mass=g.VIAL_MASS, shapes=g.vial_shapes(), color=g.AMBER, friction=(1.0, 0.9), com=(0.0, 0.0, 0.025),
                   solver_iterations=32, contact_offset=0.001)
-CAP = Body.build("cap", pos=at(g.VIAL_XY, ON_MAT + g.CAP_SEAT_Z + r.CAP_RISE) if START == "cap_on" else at(g.CAP_XY, ON_MAT), mass=g.CAP_MASS, shapes=g.cap_shapes(), color=g.WHITE, friction=(1.2, 1.1), com=(0.0, 0.0, g.CAP_H * 0.6),
+CAP_START = at(g.VIAL_XY, ON_MAT + g.CAP_SEAT_Z + (0.0 if START == "capped" else r.CAP_RISE)) if CAP_STARTS_ON else at(g.CAP_XY, ON_MAT)
+CAP = Body.build("cap", pos=CAP_START, mass=g.CAP_MASS, shapes=g.cap_shapes(), color=g.WHITE, friction=(1.2, 1.1), com=(0.0, 0.0, g.CAP_H * 0.6),
                  ignore=("vial",), solver_iterations=32)
 TABLETS = [Body.build(name, pos=tuple(np.array(at(g.VIAL_XY, ON_MAT)) + np.array(p)), mass=g.TABLET_MASS, shapes=[CylShape((0.0, 0.0, 0.0), g.TABLET_R, g.TABLET_T, g.WHITE)],
                       color=g.WHITE, friction=(0.25, 0.25), slick=True, damping=(0.05, 0.3), solver_iterations=32, contact_offset=0.0008)
@@ -115,7 +117,7 @@ BRICK_YELLOW = Body.build("brick_yellow", pos=at(g.TOYS["brick_yellow"], ON_MAT)
 # axis, free to turn against a drag and to go down the last 2 mm against a spring. Its slide runs down the axis: 0 is the cap on its seat.
 b.thread(LUGS, "vial", "cap", anchor0=(0.0, 0.0, g.CAP_SEAT_Z + g.CAP_H - g.CAP_TOP_T), axis0=(0.0, 0.0, -1.0), anchor1=(0.0, 0.0, g.CAP_H - g.CAP_TOP_T),
          axis1=(0.0, 0.0, -1.0), slide_limits=(-2 * r.CAP_RISE, 0.0), turn_damping=r.CAP_DRAG_NM, slide_stiffness=r.CAP_PUSH_N / r.CAP_RISE, slide_damping=2.0,
-         slide_max_force=60.0, always_on=START == "cap_on")
+         slide_max_force=60.0, always_on=CAP_STARTS_ON)
 CAP_LOCKED_PULL = 0.020  # locked, the slide's spring is aimed this far past the seat: 25 N holds the cap down
 CAP_LOCKED_DRAG = 2.0  # and the cap no longer turns (N m s/rad)
 OBJECTS = [MAT, BASKET, LOCK_BOX, VIAL, CAP, *TABLETS, BLOCK, BRICK_RED, BRICK_YELLOW]
@@ -165,11 +167,11 @@ class Trial:
 
     def reset(self, env=None):
         self.rule.reset()
-        self.rule.cap.on = START == "cap_on"
+        self.rule.cap.on, self.rule.cap.locked = CAP_STARTS_ON, START == "capped"
         self.n, self.hold, self.full, self.score, self.yaw = 0, 0, False, 0.0, None
         if LUGS in b._THREAD_PATHS:  # once the scene exists: the lugs as they are when the cap is off (bodykit switches the joint off at every reset)
-            b.set_slide_target(LUGS, -r.CAP_RISE)
-            b.set_turn_damping(LUGS, r.CAP_DRAG_NM)
+            b.set_slide_target(LUGS, CAP_LOCKED_PULL if START == "capped" else -r.CAP_RISE)
+            b.set_turn_damping(LUGS, CAP_LOCKED_DRAG if START == "capped" else r.CAP_DRAG_NM)
         if env is not None and START == "lid_down":  # the harness's reset leaves a mechanism's joints where they are
             box = env.unwrapped.scene["lock_box"]
             box.write_joint_position_to_sim_index(position=box.data.default_joint_pos.torch.clone())
@@ -256,11 +258,12 @@ def report(env, label: str = "") -> None:
 
 # -- the scripted demo ----------------------------------------------------------------------------------------------------------
 HOLD_UP = 0.020  # the holding hand takes the vial this far up its body: its fingers stay 1 cm under the capping hand's
-HOLD_GRIP = (15.0, 20.0)  # from the robot's side of it, pointing away and 20 degrees down: clear of the basket and of the capping hand
+HOLD_GRIP = (70.0, 10.0)  # fingers 70 degrees off straight down, pointing away from the robot: clear of the basket and of the capping hand, the wrist camera on top
 CAP_GRIP_Z = 0.019  # the capping hand's TCP this far above the cap's rim: its pad tips 6 mm above the rim
 CAP_YAW0 = 80.0  # the capping hand's yaw as it takes the cap: 90 degrees of clockwise turn to spare
-PLACE = (-0.015, 0.025)  # where in the box the vial goes, from its middle: the front half, beside the hasp that sticks out of the open lid
-PLACE_DROP = 0.020  # and it is let go this far above the box's floor: lower, the wrist would meet the open lid's top edge
+PLACE = (0.0, 0.045)  # where in the box the vial goes, from its middle: left of the hasp that sticks out of the open lid
+PLACE_YAW = 110.0  # with the fingers closing across the box's depth: the wrist and its camera then stand clear of the open lid and the hasp
+PLACE_DROP = 0.025  # and it is let go this far above the box's floor: lower, the fingers would be down between the front and back walls
 LID_LEAN = (45.0, 20.0)  # the lid is pushed over with closed fingers leaning 45 degrees outward
 LID_PUSH_Y = 0.045  # and beside the hasp, this far left of the lid's middle
 PRESS_GRIP = (55.0, 0.0)  # the hasp is pressed, and the dials are turned, with closed fingers pitched 55 degrees forward
@@ -268,7 +271,7 @@ TIP_LEAD = np.array([0.0032, 0.0, 0.0059])  # pitched so, the closed fingertips'
 BLOCK_YAW = -90.0  # the block is taken with the fingers closing along x: the wrist turns that way from the hold without passing a joint limit
 STROKE = 0.016  # that edge is drawn this far up the lock's face, over the middle dial
 DIAL_PRESS = (0.0030, 0.0045, 0.0060)  # with the command this far past the dial's front: a second and third stroke press harder
-MODES = ("full", "none", "literal", "toys_only", "uncapped", "no_dials", "settle", "cap", "snap", "lid", "lock", "dials", "toys")
+MODES = ("full", "none", "literal", "toys_only", "uncapped", "no_dials", "settle", "cap", "snap", "place", "lid", "lock", "dials", "toys")
 
 
 def demo_script(ctx):
@@ -278,7 +281,8 @@ def demo_script(ctx):
     left hand puts the three toys in the basket. Both end clear.
     Other modes, for the README's table: none does nothing; literal puts everything on the mat into the basket, the open vial too;
     toys_only leaves the vial where it stands; uncapped locks the open vial away; no_dials latches the box and leaves the dials.
-    Mechanism tests of 200 steps or fewer: settle, cap, snap (with TIDY_START=cap_on), lid, lock and dials (with TIDY_START=lid_down), toys."""
+    Mechanism tests of 200 steps or fewer: settle, cap, snap (with TIDY_START=cap_on), place (with TIDY_START=capped), lid, lock and
+    dials (with TIDY_START=lid_down), toys."""
     import demokit as d
     from yam_arena import ik
     from yam_arena.constants import FINGER_CLOSED
@@ -292,7 +296,7 @@ def demo_script(ctx):
     report(env, f"{mode} start: ")
     flags = {"held": False, "capped": False, "let_go": False}
     down0 = d.down(0)
-    pace = {"cap": 0.6, "snap": 0.5, "lid": 0.75, "lock": 0.6, "dials": 0.75, "toys": 0.75}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
+    pace = {"cap": 0.6, "snap": 0.5, "place": 0.45, "lid": 0.75, "lock": 0.6, "dials": 0.75, "toys": 0.75}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
     T = lambda seconds: seconds * pace  # noqa: E731
 
     def vial_seat(up: float = 0.0) -> np.ndarray:
@@ -310,8 +314,8 @@ def demo_script(ctx):
         return ok
 
     def hold_vial():
-        """The left hand takes the vial round its body, 2 cm up, and holds it until the cap has snapped."""
-        grip = d.side(*HOLD_GRIP)
+        """The left hand takes the vial round its body, 2 cm up, from the robot's side, and holds it until the cap has snapped."""
+        grip = d.tilted(*HOLD_GRIP)
         a = left.approach_axis(grip)
         spot = ctx.pos("vial") + [0.0, 0.0, HOLD_UP]  # read once: a servo's goal must stand still
         back = spot - 0.06 * a
@@ -385,19 +389,20 @@ def demo_script(ctx):
         yield from arm.close(2 * g.VIAL_RO, 10.0, label="take the vial")
         yield from arm.wait(0.2)
 
-    def vial_to(arm, xy, floor: float, rim: float, width: float, drop: float = 0.002):
+    def vial_to(arm, xy, floor: float, rim: float, width: float, drop: float = 0.002, yaw: float = 0.0):
         """A hand holding the vial, or its locked cap, lifts it, carries it over a box whose rim is `rim` up, lowers it inside and lets
         it go `drop` above the floor, opening only 4 mm wider than what it holds on each side: the box's walls are near."""
         held = arm.tcp() - ctx.pos("vial")  # where the hand is on it
         vial = lambda: ctx.pos("vial")  # noqa: E731
         over = np.array([xy[0], xy[1], TOP + rim + 0.012])
         yield from arm.move(arm.at() + [0.0, 0.0, 0.10], t=T(1.5), label="lift the vial")
-        yield from arm.move(over + held, grip=down0, t=T(3.0), label="over the box")
+        yield from arm.move(over + held, grip=d.down(yaw), t=T(3.0), label="over the box")
         yield from arm.servo(over, tol=0.003, timeout=2.0, read=vial, label="the vial over the box")
         low = TOP + floor + drop
-        yield from arm.servo(lambda tt: np.array([over[0], over[1], max(over[2] - 0.06 * tt, low)]), tol=0.003, timeout=3.5, read=vial, label="down into the box")
+        yield from arm.servo(lambda tt: np.array([over[0], over[1], max(over[2] - 0.06 / pace * tt, low)]), tol=0.003, timeout=3.5, read=vial, label="down into the box")
         yield from arm.move(arm.at(), finger=-(width / 2 + 0.004), t=T(0.4), label="let go")
         arm.trim = np.zeros(3)
+        report(env, "vial let go: ")
         yield from arm.move(arm.at() + [0.0, 0.0, 0.095], t=T(1.2), label="up out of the box")
 
     def shut_lid():
@@ -513,7 +518,7 @@ def demo_script(ctx):
         return
     if mode == "snap":  # with TIDY_START=cap_on: hold the vial, then take the cap, push it down and turn it until it snaps; let go of the vial
         def snap():
-            yaw = HOLD_GRIP[0] + 90.0  # the open fingers come down in line with the holding hand's: one of them between its two
+            yaw = HOLD_GRIP[1] + 90.0  # the open fingers come down in line with the holding hand's: one of them between its two
             wait_at = np.array([g.CAP_XY[0], g.CAP_XY[1], TOP + 0.16])  # over where the cap lies in the task, out of the holding hand's way
             yield from right.move(wait_at, grip=d.down(yaw), finger=-(g.CAP_R + 0.008), t=T(2.0), label="wait over the cap's place")
             while not flags["held"]:
@@ -524,6 +529,12 @@ def demo_script(ctx):
                 yield
             report(env, "vial let go: ")
         yield from ctx.together(hold_vial(), snap())
+        return
+    if mode == "place":  # with TIDY_START=capped: the closed vial by its cap from the mat into the lock box
+        yield from take_cap(CAP_YAW0 - 90.0)
+        yield from vial_to(right, (g.BOX_XY[0] + PLACE[0], g.BOX_XY[1] + PLACE[1]), g.BOX_FLOOR, g.BOX_RIM_Z, 2 * g.CAP_R, PLACE_DROP, PLACE_YAW)
+        yield from right.wait(0.3)
+        report(env, "vial in the box: ")
         return
     if mode == "lid":
         yield from shut_lid()
@@ -547,7 +558,7 @@ def demo_script(ctx):
             while not flags["let_go"]:
                 yield
         held = 2 * (g.VIAL_RO if mode == "uncapped" else g.CAP_R)
-        yield from vial_to(right, (g.BOX_XY[0] + PLACE[0], g.BOX_XY[1] + PLACE[1]), g.BOX_FLOOR, g.BOX_RIM_Z, held, PLACE_DROP)
+        yield from vial_to(right, (g.BOX_XY[0] + PLACE[0], g.BOX_XY[1] + PLACE[1]), g.BOX_FLOOR, g.BOX_RIM_Z, held, PLACE_DROP, PLACE_YAW)
         yield from shut_lid()
         yield from lock_it(dials=mode != "no_dials")
         yield from clear(right)
