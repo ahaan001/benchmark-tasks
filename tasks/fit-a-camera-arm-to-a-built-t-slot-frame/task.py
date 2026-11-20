@@ -360,7 +360,8 @@ BESIDE = 0.0025  # the foot is aimed this far to the inner side of the slot's li
 ROLL = 8.0  # degrees the camera end is tipped up: the nuts' outer lower edges then lead
 EDGE_AT = -0.001  # those edges are brought over the opening, this far across its middle line
 HOOK = 0.0018  # and go this far down into it
-PUSH, PUSH_STEP = 0.007, 0.0002  # then the hand's command goes this far outward, at 4 mm a second: what the foot does not follow is a light push on the outer lip
+PUSH, PUSH_STEP = 0.009, 0.0002  # then the hand's command goes this far outward, at 4 mm a second: what the foot does not follow is a light push on the outer lip
+STUCK = 0.006  # a part that has not followed the command this far is held by something. Under 3 mm it may only be the arm's own friction
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
 TURN_RATE = 45.0  # degrees a second
 MODES = ("full", "none", "held", "unheld", "one_screw", "off_line", "settle", "take", "drive", "seat")
@@ -487,7 +488,7 @@ def demo_script(ctx):
             lead = 0.0
             for _ in range(60):  # the edges down into the opening
                 z = low_edge()[2]
-                if z <= -HOOK or lead > 0.003:
+                if z <= -HOOK or lead > STUCK:
                     break
                 nudge(left, (0.0, 0.0, -0.0005))
                 yield
@@ -511,7 +512,7 @@ def demo_script(ctx):
             heights, lead = [], 0.0
             for _ in range(80):  # and down onto the bar
                 heights.append(height())
-                if heights[-1] <= 0.0008 or lead > 0.003:
+                if heights[-1] <= 0.0008 or lead > STUCK:
                     break
                 stopped = len(heights) > 5 and heights[-6] - heights[-1] < 0.0002
                 lead = lead + 0.0005 if stopped else 0.0
@@ -620,7 +621,7 @@ def demo_script(ctx):
         lead = 0.0
         for _ in range(60):
             depth = float(tip()[2] - socket(k)[0][2])
-            if depth <= 0.0008 or lead > 0.004:
+            if depth <= 0.0008 or lead > STUCK:
                 break
             nudge(right, (0.0, 0.0, -0.0005))
             yield
