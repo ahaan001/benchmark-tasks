@@ -356,7 +356,9 @@ PAD_MID = 0.0045  # the middle of a pad's flat face is this far down the fingers
 CARRY_UP = 0.055  # the bracket is carried this high above its start: its camera and nuts pass over the frame's bars
 CARRY_OVER = 0.05  # and, commanded, this far above where it will hover over the bar: the arm gives up to 2 cm under the bracket's weight
 OVER = 0.013  # it comes down from this far above the bar: the nuts' undersides 3.4 mm above its face
-SEEK = (0.0, 0.0004, -0.0004, 0.0008, -0.0008, 0.0012, -0.0012, 0.0016, -0.0016)  # sideways steps across the slot when the nuts have landed on the lips
+BESIDE = 0.0015  # the foot is brought down this far to the inner side of the slot's line, its nuts onto the lip
+PRESS = 0.002  # the command runs this far below where the lips hold the foot: a light press
+DRAW, DRAW_STEP = 0.004, 0.00015  # the foot is drawn this far across the slot, at 3 mm a second
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
 TURN_RATE = 45.0  # degrees a second
 MODES = ("full", "none", "held", "unheld", "one_screw", "off_line", "settle", "take", "drive", "seat")
@@ -445,47 +447,64 @@ def demo_script(ctx):
         yield from over_slot()
 
     def over_slot():
-        """Square the foot to the bar and bring its middle over the slot, the nuts' undersides 3.4 mm above the bar's face."""
-        over = np.array([line_x, g.MARKED_Y, TOP + g.BAR + OVER])
+        """Square the foot to the bar and bring its middle to just beside the slot's line, the nuts' undersides 3.4 mm above the bar's face.
+        The arm sticks and slips by a millimetre or two, and the opening leaves the nuts 0.34 mm either side: so the foot is not aimed at the
+        slot but 1.5 mm to its inner side, from where `lower` draws it across."""
+        over = np.array([line_x, g.MARKED_Y + BESIDE, TOP + g.BAR + OVER])
         left.trim = np.zeros(3)
         foot = lambda: point((0.0, 0.0, 0.0))  # noqa: E731
-        for _ in range(2):  # square the foot to the bar, then bring its middle over the slot
-            off = yaw(bracket()[1]) - g.MOUNT_YAW
-            if abs(off) > 0.15:
-                yield from left.arc(foot(), (0.0, 0.0, 1.0), -off, t=max(0.4, abs(off) / 10.0), label="square the foot to the bar")
-            yield from left.servo(over, tol=0.0006, timeout=3.0, gain=0.3, read=foot, label="the foot over the slot")
-        report(env, "foot over the slot: ")
+        yield from left.servo(over, tol=0.001, timeout=T(2.5), gain=0.3, read=foot, label="the foot beside the slot")
+        off = yaw(bracket()[1]) - g.MOUNT_YAW
+        if abs(off) > 0.3:
+            yield from left.arc(foot(), (0.0, 0.0, 1.0), -off, t=max(0.4, abs(off) / 10.0), label="square the foot to the bar")
+            yield from left.servo(over, tol=0.001, timeout=T(1.5), gain=0.3, read=foot, label="the foot beside the slot")
+        report(env, "foot beside the slot: ")
 
     def lower():
-        """Down until both nuts are in the slot and the foot is on the bar. Nuts that land on the lips are felt as a foot that stays up: the
-        hand then steps sideways across the slot, a little further each time, until they drop in."""
-        for seek in SEEK:
-            if seek:
-                nudge(left, (0.0, seek, 0.0015))  # up off the lips, across, and down again
-                for _ in range(4):
-                    yield
-            lead = 0.0
-            for _ in range(120):
-                if height() <= 0.0006 or lead > 0.004:
+        """Down until both nuts are in the slot and the foot is on the bar. The nuts come down on the lip beside the opening; the hand then
+        draws the foot across the slot under a light press, one way and back. A nut that meets the opening lets its end of the foot down:
+        while the foot is coming down the hand only lowers, and it draws again only if the foot stops short once more (one nut in, the
+        other still on the lip: the one that is in holds its end while the other comes round). Returns whether the foot is down."""
+        heights: list = []
+        lead = 0.0  # how far the command has gone down since the foot last stopped coming with it
+
+        def seated() -> bool:
+            return height() <= 0.0008
+
+        for way, reach in ((-1.0, DRAW), (1.0, 2 * DRAW), (-1.0, 2 * DRAW)):
+            drawn, told = 0.0, False
+            for _ in range(400):
+                if seated() or drawn >= reach:
                     break
-                before = height()
-                nudge(left, (0.0, 0.0, -0.0005))
+                heights.append(height())
+                stopped = len(heights) > 5 and heights[-6] - heights[-1] < 0.0002  # not coming down any more
+                if not stopped:
+                    lead = 0.0
+                held_up = stopped and lead >= PRESS
+                if held_up:  # on a lip: across the slot, under the press it has
+                    if not told:
+                        print(f"[tslot] the foot is held {heights[-1] * 1000:.1f} mm up: drawing it {'in' if way < 0 else 'back'} across the slot", flush=True)
+                        told = True
+                    nudge(left, (0.0, way * DRAW_STEP, 0.0))
+                    drawn += DRAW_STEP
+                else:
+                    nudge(left, (0.0, 0.0, -0.0005))
+                    lead += 0.0005
                 yield
-                lead = lead + 0.0005 - max(before - height(), 0.0)  # how far the command has run ahead of the foot
-            for _ in range(6):
-                yield
-            if height() <= 0.0008:
-                return True
-            print(f"[tslot] the foot stays {height() * 1000:.1f} mm up: the nuts are on the lips; stepping {seek * 1000:+.1f} mm across", flush=True)
-            nudge(left, (0.0, -seek, min(lead, 0.004)))  # back to the middle, the push taken off
-        return False
+            if seated():
+                break
+        for _ in range(6):
+            yield
+        if seated():
+            nudge(left, (0.0, 0.0, -0.001))  # a millimetre of press holds the foot flat
+        return seated()
 
     def to_line():
         """With the nuts in the slot the foot slides along it: bring the notch onto the line."""
         notch = lambda: point(g.NOTCH_POINT)  # noqa: E731
         for _ in range(40):
             off = line_x - float(notch()[0])
-            if abs(off) <= 0.0004:
+            if abs(off) <= 0.0010:
                 break
             nudge(left, (float(np.clip(0.4 * off, -0.001, 0.001)), 0.0, 0.0))
             yield
