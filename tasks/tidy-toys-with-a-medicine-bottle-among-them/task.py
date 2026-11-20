@@ -518,7 +518,9 @@ def demo_script(ctx):
         return
     if mode == "snap":  # with TIDY_START=cap_on: hold the vial, then take the cap, push it down and turn it until it snaps; let go of the vial
         def snap():
-            yaw = HOLD_GRIP[1] + 90.0  # the open fingers come down in line with the holding hand's: one of them between its two
+            # The open fingers come down in line with the holding hand's, one of them between its two, and flat on two of the
+            # cap's 20 wall panels: closing on a corner would turn the cap back off its lugs.
+            yaw = 90.0 + 18.0 * round(HOLD_GRIP[1] / 18.0)
             wait_at = np.array([g.CAP_XY[0], g.CAP_XY[1], TOP + 0.16])  # over where the cap lies in the task, out of the holding hand's way
             yield from right.move(wait_at, grip=d.down(yaw), finger=-(g.CAP_R + 0.008), t=T(2.0), label="wait over the cap's place")
             while not flags["held"]:
