@@ -7,7 +7,8 @@ One card at a time, hands pointing straight down:
    it hangs over the pack's front edge, the tips stopping short of the edge so they never lever on the overhang.
 2. The tips lift. The card tips over the edge and comes to rest leaning, its front edge on the felt.
 3. The fingers close into one fingertip. It comes down on the card near that front edge, on its centre line, and
-   draws it straight along its own length until its back end is 3 cm past the pack and it lies flat on the felt.
+   draws it straight away from the pack until its back end is 3 cm past the pack and it lies flat on the felt. Drawn
+   by its front end the card trails behind the fingertip, which also squares it up if the push left it askew.
 4. The fingertip lifts, comes down again 2 cm from the card's middle, on the side the card has to go, and slides it
    straight to its box. Led from in front of its middle a card follows like a trailer and keeps its heading; pushed
    from behind its middle, or drawn under two fingertips that do not press alike, it swings round.
@@ -37,7 +38,7 @@ MODE = os.environ.get("DEAL_MODE", "full")
 DEBUG = bool(os.environ.get("TASK_DEBUG"))
 HALF_GAP = 0.020  # each fingertip this far from the card's centre line
 GRIP = (HALF_GAP - 0.0015) / 0.047  # share of fully open: the tips' inner faces are 47 mm from the centre when open
-PRESS = -0.001 if MODE == "light" else 0.0007  # the tips are commanded this far into the surface they ride on
+PRESS = -0.001 if MODE == "light" else 0.00045  # the tips are commanded this far into the surface they ride on
 PRESS_DRAW = 0.0005  # second touch, on the leaning card
 PRESS_FELT = 0.0008  # once the card lies on the felt
 CLEAR_PACK = 0.03  # the card is drawn until its back edge is this far past the pack
@@ -184,8 +185,8 @@ class Dealer:
             x, y = self.tcp[arm][:2]
             if self._move(arm, self._tips(x, y, self._surface(pos, rot, x, y), PRESS_DRAW), SLOW) and self._wait(0.2):
                 self._next("draw")
-        elif self.phase == "draw":  # straight along the card's own length, until it lies flat clear of the pack
-            x, y = self.tcp[arm][:2] + axis[:2] / np.linalg.norm(axis[:2]) * PUSH * self.dt
+        elif self.phase == "draw":  # straight away from the pack, until the card lies flat and clear of it
+            x, y = self.tcp[arm][:2] + [PUSH * self.dt, 0.0]
             self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_DRAW)
             back = pos[0] - abs(axis[0]) * L.CARD_L / 2 - abs(axis[1]) * L.CARD_W / 2
             flat = abs(rot[2, 2]) > math.cos(math.radians(2.0)) and top[2] < pack_pos[2]
