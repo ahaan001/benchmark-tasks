@@ -111,8 +111,8 @@ no meshes, CAD files, textures or other third-party assets in this folder. The r
   have the part's own width. The ridges on the flange's top are not modelled; nut on aluminium has friction 0.6.
 - **Driver** (free body, 79 g): Wera 454 HF, 5 x 100 mm. A 4.98 mm hex blade as a convex hull, a neck 30 x 22 x 21 mm that a gripper
   takes by its two flat sides, the 99 mm bar and the 20 mm short arm. The split of the 49 mm handle into neck and bar is ours. The
-  blade's tip is chamfered 0.7 mm over its last millimetre; a real tip's chamfer is about 0.3 mm. The holding ball in the tip is not
-  modelled.
+  blade's tip is chamfered 1 mm over its last 1.5 mm, which leads it into a socket from 1 mm off its axis; a real tip's chamfer is
+  about 0.3 mm. The holding ball in the tip is not modelled.
 - **Block and supports** (fixed): a beech block 60 x 60 x 40 mm with a 7 mm hole 35 mm deep (square in the model), three EVA foam blocks
   35 mm high.
 

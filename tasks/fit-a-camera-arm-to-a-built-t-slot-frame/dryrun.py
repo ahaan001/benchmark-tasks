@@ -78,11 +78,13 @@ class World:
         origin, yaw = task.bracket_start()
         self.bracket = [origin + UP, g.rot_z(yaw)]
         self.screw, self.nut, self.travel = [0.0, 0.0], [math.radians(v) for v in (task.ASKEW_DEG if task.START == "askew" else 0.0, 0.0)], [0.0, 0.0]
+        if task.START == "swung":
+            self.screw[0], self.nut[0], self.travel[0] = math.radians(task.SWUNG[0]), math.radians(task.SWUNG[1]), g.PITCH * task.SWUNG[1] / 360.0
         self.driver = [np.array([task.BLOCK_XY[0], task.BLOCK_XY[1], g.DRIVER_START[2]]) + UP, g.rot_z(task.DRIVER_YAW)]
         self.held = {}  # name -> (side, position in the hand's frame, rotation in the hand's frame)
         self.in_socket, self.last_blade = None, None
         self.tipped, self.notes = False, []
-        self._screw_was = [0.0, 0.0]
+        self._screw_was = list(self.screw)
 
     def note(self, text):
         if text not in self.notes:
@@ -204,7 +206,7 @@ class World:
             head = pos + rot @ (g.SCREWS[k] + [0.0, 0.0, g.SOCKET_FLOOR])
             off = float(np.linalg.norm(np.asarray(xy) - head[:2]))
             if off <= g.HEAD_D / 2:
-                lined = off <= 0.0007  # the tip's chamfer takes up the rest
+                lined = off <= g.TIP_CAPTURE  # the tip's chamfer takes up the rest
                 already = self.in_socket == k
                 return (head[2] if lined or already else head[2] + g.SOCKET_DEPTH), k if lined or already else None
         b = np.asarray(xy) - np.asarray(task.BLOCK_XY)
@@ -258,7 +260,7 @@ class World:
 
     def unheld(self):
         pos, rot = self.bracket
-        if "bracket" in self.held or self.tipped or task.START in ("mounted", "onlips") or not self.over_marked_bar(pos) or pos[2] - TOP > g.BAR + 0.001:
+        if "bracket" in self.held or self.tipped or task.START in ("mounted", "swung", "onlips") or not self.over_marked_bar(pos) or pos[2] - TOP > g.BAR + 0.001:
             return
         if not any(self.nut_grips(k) for k in range(2)):  # nothing holds the foot down: the camera end goes down, the foot's outer edge up
             edge = np.array([pos[0], g.MARKED_Y + g.BAR / 2, TOP + g.BAR])

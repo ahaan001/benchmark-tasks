@@ -61,7 +61,8 @@ TRAVEL = (-0.0030, NUT_TOP - NUT_E)  # how far a nut may run down and up its scr
 # -- Wera 454 HF T-handle hex driver 5 x 100 mm (Wera size table and specification sheet) ------------------------------------------------
 HEX_AF = 0.00498
 BLADE = 0.100
-TIP_CHAMFER = (0.0010, 0.0007)  # the blade's tip: this long, cut back this far (a real tip's chamfer is about 0.3 mm: stated in the README)
+TIP_CHAMFER = (0.0015, 0.0010)  # the blade's tip: this long, cut back this far (a real tip's chamfer is about 0.3 mm: stated in the README)
+TIP_CAPTURE = (SOCKET_AF - (HEX_AF - 2 * TIP_CHAMFER[1])) / 2  # how far off a socket's axis the tip may come down and still be led in: 1.06 mm
 NECK = (0.030, 0.022, 0.021)  # the handle's lower part round the blade (est split of the 49 mm tall handle)
 HANDLE = (0.099, 0.022, 0.028)
 SHORT_ARM = 0.020  # the key's short arm, out of one end of the handle

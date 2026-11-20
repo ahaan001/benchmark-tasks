@@ -45,12 +45,15 @@ NAMES = ("a", "b")  # the two screws and their nuts: a nearer the robot once mou
 # Start variants for the mechanism tests in the README (never the submitted demo, which starts as the setup says):
 # TSLOT_START=mounted has the bracket start on the marked bar, both nuts down in the slot, and the driver's block close by;
 # TSLOT_START=askew has it start just above the bar with nut a turned 20 degrees off the slot's line;
-# TSLOT_START=onlips has it start on the bar 8 mm off the slot, standing on its nuts on a lip, its arm propped level.
+# TSLOT_START=onlips has it start on the bar 8 mm off the slot, standing on its nuts on a lip, its arm propped level;
+# TSLOT_START=swung is mounted with nut a already swung under the lips and drawn 0.6 mm up its screw, 0.1 mm short of them.
 START = os.environ.get("TSLOT_START", "")
-if START not in ("", "mounted", "askew", "onlips"):
+if START not in ("", "mounted", "askew", "onlips", "swung"):
     raise ValueError(f"TSLOT_START={START!r}")
-BLOCK_XY = (0.20, -0.17) if START == "mounted" else g.BLOCK_XY
-DRIVER_YAW = 75.0 if START == "mounted" else 0.0  # in the mounted test the driver stands turned, so that the hand takes it near the top of its stroke
+ON_BAR = START in ("mounted", "swung")
+BLOCK_XY = (0.20, -0.17) if ON_BAR else g.BLOCK_XY
+DRIVER_YAW = 75.0 if ON_BAR else 0.0  # in those tests the driver stands turned, so that the hand takes it near the top of its stroke
+SWUNG = (-308.0, 216.0)  # screw a and its nut on it, in degrees: the nut 92 degrees round, 0.6 turns up its thread
 ASKEW_DEG, ASKEW_UP = 20.0, 0.003
 ONLIPS = (0.003, 0.008)  # where the foot starts in the on-the-lips test, from where it belongs
 TRAVEL_ARMATURE = 0.2  # kg in the slide's own direction: lets the solver carry the thread's spring through the light nut
@@ -155,7 +158,7 @@ def nut_links(name: str, x: float) -> list:
 
 def bracket_start() -> tuple:
     """(origin above the table, yaw) of the bracket at a reset."""
-    if START == "mounted":
+    if ON_BAR:
         return np.array([g.MOUNT_XY[0], g.MOUNT_XY[1], g.BAR]), g.MOUNT_YAW
     if START == "askew":
         return np.array([g.MOUNT_XY[0], g.MOUNT_XY[1], g.BAR + g.SCREW_END + ASKEW_UP]), g.MOUNT_YAW
@@ -200,7 +203,7 @@ FRAME, SUPPORTS, BLOCK, BRACKET, DRIVER = frame(), supports(), block(), bracket(
 PROP_H = g.BAR + (g.SCREW_END if START == "onlips" else 0.0)
 PROP = m.fixed("prop", (g.MOUNT_XY[0] - 0.006, g.MOUNT_XY[1] + (ONLIPS[1] if START == "onlips" else 0.0) + 0.150, TOP), [("prop", box_mesh((0.016, 0.012, PROP_H), (0.0, 0.0, PROP_H / 2)), "foam")],
                [m.col_box("c_prop", (0.016, 0.012, PROP_H), (0.0, 0.0, PROP_H / 2))], LOOKS, friction=(0.9, 0.8))  # holds the arm level in the tests that start on the bar, where no hand does; it stands clear of the camera's plate
-OBJECTS = [FRAME, BLOCK, BRACKET, DRIVER] + ([PROP] if START in ("mounted", "onlips") else [] if START else [SUPPORTS])
+OBJECTS = [FRAME, BLOCK, BRACKET, DRIVER] + ([PROP] if ON_BAR or START == "onlips" else [] if START else [SUPPORTS])
 
 
 # -- reading the scene ----------------------------------------------------------------------------------------------------------------------
@@ -262,6 +265,8 @@ def write_pose(env, name: str, pos, rot, body: str | None = None) -> None:
 
 
 def start_joints() -> dict:
+    if START == "swung":
+        return {"screw_a": math.radians(SWUNG[0]), "nut_a": math.radians(SWUNG[1])}
     return {"nut_a": math.radians(ASKEW_DEG)} if START == "askew" else {}
 
 
@@ -364,7 +369,7 @@ PUSH, PUSH_STEP = 0.009, 0.0002  # then the hand's command goes this far outward
 STUCK = 0.006  # a part that has not followed the command this far is held by something. Under 3 mm it may only be the arm's own friction
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
 TURN_RATE = 45.0  # degrees a second
-MODES = ("full", "none", "held", "unheld", "one_screw", "off_line", "settle", "take", "drive", "seat")
+MODES = ("full", "none", "held", "unheld", "one_screw", "off_line", "settle", "take", "drive", "seat", "back")
 
 
 def demo_script(ctx):
@@ -374,8 +379,9 @@ def demo_script(ctx):
     and turning back between strokes. It then stands the driver back in its block, and the left hand lets go last.
     Other modes, for the README's table: none does nothing; held never lets go of the arm; unheld lets go as soon as the foot is on the bar;
     one_screw tightens screw a only; off_line mounts the bracket 4 mm from the line. Mechanism tests of 200 steps or fewer: settle (any start),
-    take (grip and lift the bracket), drive (with TSLOT_START=mounted: the driver into screw a and one stroke), seat (with TSLOT_START=onlips:
-    the hand takes a bracket whose nuts stand on a lip, brings them over the slot and lowers them in)."""
+    take (grip and lift the bracket), drive (with TSLOT_START=mounted: the driver into screw a and one stroke; with TSLOT_START=swung that
+    stroke draws the nut tight), seat (with TSLOT_START=onlips: the hand takes a bracket whose nuts stand on a lip and gets them into the
+    slot), back (the driver out of its block and back into it)."""
     import demokit as d
     from yam_arena import ik
     from yam_arena.constants import FINGER_OPEN
@@ -392,7 +398,7 @@ def demo_script(ctx):
     threads = [r.Thread(), r.Thread()]  # the demo's own count of how far each thread is wound, from the joints it can see
     lags = [0.0, 0.0]
     hold_grip = d.tilted(HOLD_TILT, g.MOUNT_YAW - 90.0)
-    pace = {"take": 0.6, "drive": 0.45, "seat": 0.6}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
+    pace = {"take": 0.6, "drive": 0.45, "seat": 0.5, "back": 0.4}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
     T = lambda seconds: seconds * pace  # noqa: E731
     line_x = g.LINE_X + (0.004 if mode == "off_line" else 0.0)
 
@@ -619,13 +625,18 @@ def demo_script(ctx):
         back = hand - hand_yaw()
         if abs(back) > 0.5:
             yield from right.turn(back, t=max(0.3, abs(back) / (2.0 * TURN_RATE)), label="turn the hand back in the air")
-        for _ in range(3):  # the tip's chamfer takes up 0.7 mm sideways; the hex is turned to the socket's, since the screw is stiff in its hole
+        for _ in range(2):  # the hex is turned to the socket's: the screw is stiff in its hole and will not come round to the blade
             off = wrap60(blade_yaw() - socket(k)[1])
-            if abs(off) > 1.5:
+            if abs(off) > 0.8:
                 yield from right.turn(-off, t=0.3, label="line the hex up with the socket")
-            ok = yield from right.servo(socket(k)[0] + [0.0, 0.0, 0.008], tol=0.0006, timeout=T(2.0), gain=0.3, read=tip, label=f"the blade over screw {NAMES[k]}")
-            if ok:
+        yield from right.servo(socket(k)[0] + [0.0, 0.0, 0.008], tol=0.0005, timeout=2.5, gain=0.25, read=tip, label=f"the blade over screw {NAMES[k]}")
+        for _ in range(2):  # the arm creeps on after a servo stops: wait, look again, and put the command over by what is left
+            yield from right.wait(0.3)
+            off = (socket(k)[0] - tip())[:2]
+            if np.linalg.norm(off) <= 0.0005:
                 break
+            nudge(right, (float(off[0]), float(off[1]), 0.0))
+        yield from right.wait(0.2)
         lead = 0.0
         for _ in range(60):
             depth = float(tip()[2] - socket(k)[0][2])
@@ -722,10 +733,18 @@ def demo_script(ctx):
     if mode == "take":
         yield from run(left_hand())
         return
+    if mode == "back":  # the driver out of its block and back into it
+        def back():
+            yield from take_driver()
+            yield from right.wait(0.3)
+            yield from driver_back()
+            report(env, "driver back: ")
+        yield from run(back())
+        return
     if mode == "seat":  # with TSLOT_START=onlips: from standing on its nuts on a lip, over the slot and down into it
         def seat():
             yield from take_bracket(lift=0.006)
-            yield from over_slot()
+            left.trim = np.zeros(3)
             seated = yield from lower()
             if seated:
                 yield from to_line()
