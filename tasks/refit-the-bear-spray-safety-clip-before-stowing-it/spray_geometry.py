@@ -269,7 +269,7 @@ def can_gap(points, can_pos, can_rot) -> float:
 HOLD_Z = 0.138  # where a gripper holds the can: on its straight wall just under the shoulder, close under the push that seats the clip, clear of the head
 
 # -- the scene, heights above the table ----------------------------------------------------------------------------------------------
-MAT = (0.40, 0.30, 0.003)  # black rubber bench mat, long side along x
+MAT = (0.40, 0.30, 0.003)  # dark grey rubber bench mat, long side along x (grey, so that the can's black head shows against it)
 MAT_XY = (0.26, -0.10)
 CAN_XY = (0.30, -0.02)
 CAN_YAW = -90.0  # the finger loop toward -y: the robot's right
@@ -331,5 +331,5 @@ def tip_push_n(mass: float = CAN_MASS, at: float = 0.21) -> float:
 
 LOOKS_RGB = {  # sRGB, 0..1
     "can": (0.93, 0.93, 0.94), "label": (0.16, 0.45, 0.78), "head": (0.05, 0.05, 0.06), "nozzle": (0.95, 0.80, 0.10),
-    "clip": (0.96, 0.42, 0.06), "mat": (0.03, 0.03, 0.035), "bin": (0.80, 0.86, 0.90), "steel": (0.72, 0.73, 0.75), "stove": (0.55, 0.57, 0.60),
+    "clip": (0.96, 0.42, 0.06), "mat": (0.30, 0.31, 0.33), "bin": (0.80, 0.86, 0.90), "steel": (0.72, 0.73, 0.75), "stove": (0.55, 0.57, 0.60),
 }

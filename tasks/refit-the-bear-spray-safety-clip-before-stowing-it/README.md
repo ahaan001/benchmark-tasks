@@ -28,7 +28,7 @@ its body while the other fits the clip.
   disengaged, resulting in an inadvertent discharge".
 
 The instruction names neither the hazard nor the clip. The scene shows both: the trigger tab stands bare above the finger loop, and
-the orange clip stands on the black mat beside the can.
+the orange clip stands on the grey mat beside the can.
 
 ## What makes it hard
 
@@ -162,7 +162,7 @@ photo are good to about 1 mm. Depths across the can are not in it.
 | Trigger tab | comes out of the head 14 mm behind the axis, ends 38 mm behind it, 4.2 mm thick, rises 21 degrees to the rear | photo [9]; 10 mm wide, hinge 15 mm in front of the axis and 9 degrees (8.5 mm) of travel are estimates |
 | Safety clip | 37 mm long plus its curl, 20 mm high; strap over the tab, web under it with a 3.5 mm hole, strut behind; 0.01 lb | photo [9], the maker's listing of the wedge alone [10]; 14 mm wide is an estimate |
 | Can's weight | 0.15 kg empty | estimate: listed 0.85 lb less 7.9 oz of contents and its card |
-| Rubber mat | 40 x 30 x 0.3 cm | any black rubber bench mat cut to size |
+| Rubber mat | 40 x 30 x 0.3 cm, dark grey | any dark grey rubber bench mat cut to size |
 | Gear bin | Sterilite Large Clip Box, 14 x 11 x 3 1/4 in with its lid | Sterilite [11]; wall 7.6 cm without the lid and 2.5 mm thick are estimates |
 | Camp stove | Esbit Pocket Stove, small, folded: 3.9 x 3 x 0.9 in (9.8 x 7.7 x 2.3 cm), galvanised steel | a retailer's listing [12]; 3.25 oz (92 g) without fuel is from another listing: weigh it |
 | Cup | GSI Outdoors Glacier Stainless 10 fl. oz. Camp Cup: 4.4 x 3.2 x 3.8 in with its handle, 5.7 oz | GSI Outdoors [13]; modelled 162 g with its lid |
@@ -190,7 +190,7 @@ photo are good to about 1 mm. Depths across the can are not in it.
 | Sterilite Large Clip Box (the base only is used) | Walmart listing | $13.16 |
 | Esbit Pocket Stove, without its fuel tablets | Sportsman's Warehouse listing | $12.99 |
 | GSI Outdoors Glacier Stainless 10 fl. oz. Camp Cup | maker [13] | not found in the listings read |
-| Black rubber bench mat, 40 x 30 cm, 3 mm; masking tape | any | not priced |
+| Dark grey rubber bench mat, 40 x 30 cm, 3 mm; masking tape | any | not priced |
 
 Under $80 with the cup and the mat. Nothing is used up by a trial. Nothing live is on the rig: the practice can holds no irritant
 and is emptied of its propellant outdoors before the first trial, so a pressed tab releases nothing. The words INERT TRAINING UNIT
