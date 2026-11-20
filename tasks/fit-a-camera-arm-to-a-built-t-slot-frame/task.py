@@ -365,12 +365,11 @@ ROLL = 9.0  # degrees the camera end is tipped up: the nuts' outer lower edges t
 EDGE_AT = -0.0028  # those edges are brought over the opening, this far across its middle line: 1.3 mm inside the outer lip
 BESIDE = EDGE_AT + (g.NUT_B - g.NUT_PLAY) / 2  # so the foot is carried to this far from the slot's line
 HOOK = 0.0005  # the edges go this far down into the opening before anything is drawn sideways
-DEEP = 0.003  # and, once the inner lip is clear, this far, still tipped
-IN_OPENING = 0.0012  # an edge deeper than this has its nut between the lips
-KEEP_IN = 0.0012  # the foot is only brought level while the middle of the nuts' undersides is this far down
+DEEP = 0.0014  # and, once the inner lip is clear, this far, still tipped: any deeper and a tipped nut has no room sideways
+IN_OPENING = 0.0010  # an edge deeper than this has its nut between the lips
+KEEP_IN, KEEP_DOWN = 0.0004, 0.0010  # the foot is only brought level while the middle of each nut's underside is this far down, and is let down to keep it there
 PUSH_LEAD, PUSH_STEP = 0.004, 0.0002  # the hand's command goes outward at 4 mm a second, never further ahead of the nuts than this
 LEAD = 0.004  # the furthest a lowering command runs ahead of what the hand holds: the arm follows late and in jumps of 2 to 3 mm
-LEVEL_LEAD = 0.002  # and how much further it may run while the foot is brought level
 SLIDE_LEAD = 0.006  # and ahead of a foot that is slid along the slot
 TRIES, LAST_TRY_S = 6, 85.0  # tries at the slot, none begun later than this: the screws and the driver take 75 s
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
@@ -510,9 +509,9 @@ def demo_script(ctx):
         return np.c_[p[:, 1] - g.MARKED_Y, p[:, 2] - TOP - g.BAR]
 
     def sunk() -> float:
-        """How far the middle of the nuts' undersides is below the bar's face."""
+        """How far the middle of a nut's underside is below the bar's face: the less deep of the two."""
         pos, rot = bracket()
-        return float(TOP + g.BAR - (g.NUT_LOW @ rot.T + pos)[:, 2].mean())
+        return float(TOP + g.BAR - (g.NUT_LOW @ rot.T + pos)[:, 2].reshape(2, 4).mean(axis=1).max())
 
     def lowest() -> float:
         """The lowest corner of the nuts' undersides, above the bar's face."""
@@ -525,6 +524,10 @@ def demo_script(ctx):
 
     def skew() -> float:
         return (yaw(bracket()[1]) - g.MOUNT_YAW + 180.0) % 360.0 - 180.0
+
+    def slope() -> float:
+        """How far the foot slopes along the bar, in degrees: positive with screw b's end up."""
+        return math.degrees(math.asin(float(np.clip(bracket()[1][2, 0], -1.0, 1.0))))
 
     def gap(arm) -> np.ndarray:
         """An arm's command minus where its hand is, seen from its joints: its lag, its droop under a load and its push."""
@@ -542,33 +545,37 @@ def demo_script(ctx):
         """About a line along the bar through the middle of the two nuts' undersides: the camera end up or down, the nuts where they are."""
         turn_hand((1.0, 0.0, 0.0), deg, point((0.0, 0.0, -g.SCREW_END)))
 
-    def unskew(wound: float, at: float, most: float) -> float:
-        """One step of turning the hand about its own upright line, toward the foot lying along the bar. The wrist sticks, so the command
-        is wound on a little a step until the foot moves, but never more than `most` degrees ahead of it. `wound` is the command so far
-        and `at` the skew when it began; returns the command so far."""
-        off = skew()
-        step = -float(np.clip(0.3 * off, -0.12, 0.12))
-        if abs(wound + step - (off - at)) <= most:
-            turn_hand((0.0, 0.0, 1.0), step)
+    def trim(axis, sense: float, read, wound: float, at: float, most: float) -> float:
+        """One step of turning the hand about a line through its own TCP, to bring `read()`, an angle of the foot, to zero. The wrist
+        sticks, so the command is wound on a little a step until the foot moves, but never more than `most` degrees ahead of it.
+        `sense` is the way the angle goes with the turn, `wound` the command so far and `at` the angle when it began. Returns the
+        command so far."""
+        off = read()
+        step = -sense * float(np.clip(0.3 * off, -0.12, 0.12))
+        if abs(wound + step - sense * (off - at)) <= most:
+            turn_hand(axis, step)
             wound += step
         return wound
 
     def square(tol: float = 0.12, steps: int = 40, most: float = 1.5):
-        """The foot along the bar within `tol` degrees: two nuts 60 mm apart leave the foot half a degree in the slot's opening."""
-        good, wound, at = 0, 0.0, skew()
+        """The foot along the bar within `tol` degrees and level along it within twice that: two nuts 60 mm apart leave the foot half a
+        degree in the slot's opening, and a foot that slopes holds one nut higher than the other."""
+        good, wound, at = 0, [0.0, 0.0], (skew(), slope())
         for _ in range(steps):
-            good = good + 1 if abs(skew()) <= tol else 0
+            good = good + 1 if abs(skew()) <= tol and abs(slope()) <= 2 * tol else 0
             if good >= 3:
                 return True
             if abs(skew()) > 0.5 * tol:
-                wound = unskew(wound, at, most)
+                wound[0] = trim((0.0, 0.0, 1.0), 1.0, skew, wound[0], at[0], most)
+            if abs(slope()) > tol:
+                wound[1] = trim((0.0, 1.0, 0.0), -1.0, slope, wound[1], at[1], most)
             yield
         return False
 
     def trace(label: str) -> None:
         e, ahead, s = edges() * 1000, gap(left) * 1000, ctx.state("bracket")
         turned = [s.deg(f"screw_{name}") + s.deg(f"nut_{name}") + skew() for name in NAMES]
-        print(f"[tslot] t {ctx.t:5.1f} {label}: tipped {tipped():+.1f}, skew {skew():+.2f}; nut edges {e[0, 0]:+.2f} {e[1, 0]:+.2f} mm across, {e[0, 1]:+.2f} {e[1, 1]:+.2f} mm up, "
+        print(f"[tslot] t {ctx.t:5.1f} {label}: tipped {tipped():+.1f}, skew {skew():+.2f}, slope {slope():+.2f}; nut edges {e[0, 0]:+.2f} {e[1, 0]:+.2f} mm across, {e[0, 1]:+.2f} {e[1, 1]:+.2f} mm up, "
               f"nuts {turned[0]:+.1f} {turned[1]:+.1f} degrees off the slot's line; foot {height() * 1000:.1f} mm up; command ahead of the hand ({ahead[0]:+.1f} {ahead[1]:+.1f} {ahead[2]:+.1f}) mm", flush=True)
 
     def draw_out(clear: float):
@@ -595,8 +602,9 @@ def demo_script(ctx):
         """One try at the slot, by feel: the arm cannot place two nuts to the 0.19 mm either side that the opening leaves. The hand tips
         the camera end up 9 degrees, squares the foot to the bar and brings the nuts' outer lower edges over the opening, which is 8 mm
         wide for an edge; lets them down into it; draws them outward until the inner lip is clear of the nuts or the outer lip stops
-        them; lets them further down, still tipped; then brings the foot level and down together, steering by the bracket's own tilt
-        and only while the nuts stay down in the opening. Returns whether the foot is down flat, which it cannot be with a nut on a lip."""
+        them; lets them a little further down, still tipped; then brings the foot level, steering by the bracket's own tilt and only
+        while the nuts stay down in the opening, and lets it down onto the bar. Returns whether the foot is down flat, which it cannot
+        be with a nut on a lip."""
         if abs(ROLL - tipped()) > 2.0:
             yield from left.arc(point((0.0, 0.0, -g.SCREW_END)), (1.0, 0.0, 0.0), ROLL - tipped(), t=0.8, label="tip the camera end up")
         for _ in range(12):
@@ -629,8 +637,8 @@ def demo_script(ctx):
             trace(f"try {n + 1}, the nuts are NOT in the opening")
             return False
         trace(f"try {n + 1}, in the opening")
-        start, stuck, roll0, turned, wound, skew0 = gap(left), 0, tipped(), 0.0, 0.0, skew()
-        for k in range(400):  # level and down together. No command runs far ahead of what it moves: a foot that is held up is not forced
+        start, stuck, roll0, turned, wound, at = gap(left), 0, tipped(), 0.0, [0.0, 0.0], (skew(), slope())
+        for k in range(400):  # level, then down. No command runs far ahead of what it moves: a foot that is held up is not forced
             roll, h = tipped(), height()
             if h <= 0.0008 and abs(roll) < 1.0:
                 break
@@ -638,12 +646,14 @@ def demo_script(ctx):
                 break
             ahead = start - gap(left)
             if abs(roll) > 0.3 and sunk() >= KEEP_IN and ahead[2] < 0.005 and abs(turned - (roll - roll0)) < 2.5:
-                step = -float(np.clip(0.4 * roll, -0.35, 0.35))
+                step = -float(np.clip(0.4 * roll, -0.25, 0.25))
                 tilt(step)
                 turned += step
             if abs(skew()) > 0.15:
-                wound = unskew(wound, skew0, 0.6)
-            if ahead[2] < LEVEL_LEAD:
+                wound[0] = trim((0.0, 0.0, 1.0), 1.0, skew, wound[0], at[0], 0.6)
+            if abs(slope()) > 0.25:
+                wound[1] = trim((0.0, 1.0, 0.0), -1.0, slope, wound[1], at[1], 0.6)
+            if (abs(roll) < 2.0 or sunk() < KEEP_DOWN) and ahead[2] < LEAD:  # down once it is nearly level; before that, only to keep the nuts in
                 nudge(left, (0.0, 0.0, -0.0003))
             if abs(ahead[1]) > 0.002:  # sideways the hand gives way to the lips
                 nudge(left, (0.0, 0.0003 * float(np.sign(ahead[1])), 0.0))
@@ -812,8 +822,12 @@ def demo_script(ctx):
     def driver_back():
         hole = np.array([BLOCK_XY[0], BLOCK_XY[1], TOP + g.BLOCK[2]])
         yield from right.move(hole + [0.0, 0.0, 0.02 + g.TIP_TO_TCP], grip=d.down(0.0), t=T(3.0), label="the driver over its block")
-        yield from right.servo(hole + [0.0, 0.0, 0.02], tol=0.0008, timeout=2.5, gain=0.3, read=tip, label="the blade over the block's hole")
-        yield from ease_down(right, lambda: float(tip()[2] - (TOP + g.DRIVER_START[2])), 0.002, step=0.001)
+        for _ in range(3):  # a blade that stands on the block's top is lifted and brought over again
+            yield from right.servo(hole + [0.0, 0.0, 0.02], tol=0.0008, timeout=2.5, gain=0.3, read=tip, label="the blade over the block's hole")
+            down = yield from ease_down(right, lambda: float(tip()[2] - (TOP + g.DRIVER_START[2])), 0.002, step=0.001)
+            if down:
+                break
+            yield from right.move(right.at() + [0.0, 0.0, 0.015], t=0.5, label="lift the blade off the block")
         yield from right.move(right.at(), finger=-(g.NECK[1] / 2 + 0.012), t=0.5, label="let go of the driver")
         right.trim = np.zeros(3)
         yield from right.move(right.at() + [0.0, 0.0, 0.07], t=T(1.2), label="up off the driver")
