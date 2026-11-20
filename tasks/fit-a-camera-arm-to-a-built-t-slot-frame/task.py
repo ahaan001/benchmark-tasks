@@ -356,9 +356,10 @@ PAD_MID = 0.0045  # the middle of a pad's flat face is this far down the fingers
 CARRY_UP = 0.055  # the bracket is carried this high above its start: its camera and nuts pass over the frame's bars
 CARRY_OVER = 0.05  # and, commanded, this far above where it will hover over the bar: the arm gives up to 2 cm under the bracket's weight
 OVER = 0.013  # it comes down from this far above the bar: the nuts' undersides 3.4 mm above its face
-BESIDE = 0.0015  # the foot is brought down this far to the inner side of the slot's line, its nuts onto the lip
-PRESS = 0.002  # the command runs this far below where the lips hold the foot: a light press
-DRAW, DRAW_STEP = 0.004, 0.00015  # the foot is drawn this far across the slot, at 3 mm a second
+BESIDE = 0.0025  # the foot is aimed this far to the inner side of the slot's line
+ROLL = 8.0  # degrees the camera end is tipped up: the nuts' outer lower edges then lead
+HOOK = 0.0018  # those edges go this far down into the opening
+PUSH, PUSH_STEP = 0.007, 0.0002  # then the hand's command goes this far outward, at 4 mm a second: what the foot does not follow is a light push on the outer lip
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
 TURN_RATE = 45.0  # degrees a second
 MODES = ("full", "none", "held", "unheld", "one_screw", "off_line", "settle", "take", "drive", "seat")
@@ -388,7 +389,7 @@ def demo_script(ctx):
     threads = [r.Thread(), r.Thread()]  # the demo's own count of how far each thread is wound, from the joints it can see
     lags = [0.0, 0.0]
     hold_grip = d.tilted(HOLD_TILT, g.MOUNT_YAW - 90.0)
-    pace = {"take": 0.6, "drive": 0.45, "seat": 0.4}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
+    pace = {"take": 0.6, "drive": 0.45, "seat": 0.35}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
     T = lambda seconds: seconds * pace  # noqa: E731
     line_x = g.LINE_X + (0.004 if mode == "off_line" else 0.0)
 
@@ -447,9 +448,7 @@ def demo_script(ctx):
         yield from over_slot()
 
     def over_slot():
-        """Square the foot to the bar and bring its middle to just beside the slot's line, the nuts' undersides 3.4 mm above the bar's face.
-        The arm sticks and slips by a millimetre or two, and the opening leaves the nuts 0.34 mm either side: so the foot is not aimed at the
-        slot but 1.5 mm to its inner side, from where `lower` draws it across."""
+        """Square the foot to the bar and bring its middle to 2.5 mm inside the slot's line, the nuts' undersides 3.4 mm above the bar's face."""
         over = np.array([line_x, g.MARKED_Y + BESIDE, TOP + g.BAR + OVER])
         left.trim = np.zeros(3)
         foot = lambda: point((0.0, 0.0, 0.0))  # noqa: E731
@@ -460,44 +459,60 @@ def demo_script(ctx):
             yield from left.servo(over, tol=0.0015, timeout=T(1.5), gain=0.3, read=foot, label="the foot beside the slot")
         report(env, "foot beside the slot: ")
 
+    def low_edge() -> float:
+        """The lowest corner of the two nuts' undersides, above the marked bar's face (negative: down in the opening)."""
+        pos, rot = bracket()
+        return float((g.NUT_LOW @ rot.T + pos)[:, 2].min() - TOP - g.BAR)
+
     def lower():
-        """Down until both nuts are in the slot and the foot is on the bar. The nuts come down on the lip beside the opening; the hand then
-        draws the foot across the slot under a light press, one way and back. A nut that meets the opening lets its end of the foot down:
-        while the foot is coming down the hand only lowers, and it draws again only if the foot stops short once more (one nut in, the
-        other still on the lip: the one that is in holds its end while the other comes round). Returns whether the foot is down."""
-        heights: list = []
-        lead = 0.0  # how far the command has gone down since the foot last stopped coming with it
-
-        def seated() -> bool:
-            return height() <= 0.0008
-
-        for way, reach in ((-1.0, DRAW), (1.0, 2 * DRAW), (-1.0, 2 * DRAW)):
-            drawn, told = 0.0, False
-            for _ in range(400):
-                if seated() or drawn >= reach:
+        """Both nuts into the slot, by feel. The arm cannot place them to the 0.34 mm either side that the opening leaves, and nuts drawn
+        across the lips turn on their screws. So the hand tips the camera end up 8 degrees, lets the nuts' lower edges down into the opening,
+        which is 8 mm wide for an edge, draws the foot outward until those edges lie against the outer lip, lays the foot flat about that
+        lip, lowers it, and takes its sideways push off again. Returns whether the foot is down."""
+        for attempt in range(3):
+            pos, _ = bracket()
+            yield from left.arc(np.array([pos[0], pos[1], TOP + g.BAR]), (1.0, 0.0, 0.0), ROLL, t=T(1.0), label="tip the camera end up")
+            lead = 0.0
+            for _ in range(60):  # the nuts' lower edges down into the opening
+                edge = low_edge()
+                if edge <= -HOOK or lead > 0.003:
                     break
-                heights.append(height())
-                stopped = len(heights) > 5 and heights[-6] - heights[-1] < 0.0002  # not coming down any more
-                if not stopped:
-                    lead = 0.0
-                held_up = stopped and lead >= PRESS
-                if held_up:  # on a lip: across the slot, under the press it has
-                    if not told:
-                        print(f"[tslot] the foot is held {heights[-1] * 1000:.1f} mm up: drawing it {'in' if way < 0 else 'back'} across the slot", flush=True)
-                        told = True
-                    nudge(left, (0.0, way * DRAW_STEP, 0.0))
-                    drawn += DRAW_STEP
-                else:
-                    nudge(left, (0.0, 0.0, -0.0005))
-                    lead += 0.0005
+                nudge(left, (0.0, 0.0, -0.0005))
                 yield
-            if seated():
-                break
-        for _ in range(6):
-            yield
-        if seated():
-            nudge(left, (0.0, 0.0, -0.001))  # a millimetre of press holds the foot flat
-        return seated()
+                lead += 0.0005 - max(edge - low_edge(), 0.0)
+            if low_edge() > -0.0006:  # held up on a lip: the outer one, since the foot was aimed inside the line. Up, 2 mm further in, and again
+                print(f"[tslot] the nuts' edges stay {low_edge() * 1000:+.1f} mm from the bar's face: on a lip. Up and 2 mm further in", flush=True)
+                yield from left.arc(np.array([pos[0], pos[1], TOP + g.BAR]), (1.0, 0.0, 0.0), -ROLL, t=T(0.8), label="level again")
+                yield from left.move(left.at() + [0.0, 0.002, OVER / 2], t=T(0.8), label="up and further in")
+                continue
+            y0 = float(bracket()[0][1])
+            for _ in range(round(PUSH / PUSH_STEP)):  # outward, until the edges lie against the outer lip and the arm bears on it a little
+                nudge(left, (0.0, -PUSH_STEP, 0.0))
+                yield
+            moved = y0 - float(bracket()[0][1])
+            lip = np.array([bracket()[0][0], g.MARKED_Y - g.SLOT_OPEN / 2, TOP + g.BAR])
+            yield from left.arc(lip, (1.0, 0.0, 0.0), -ROLL, t=T(1.2), label="lay the foot flat about the outer lip")
+            heights, lead = [], 0.0
+            for _ in range(80):  # and down onto the bar
+                heights.append(height())
+                if heights[-1] <= 0.0008 or lead > 0.003:
+                    break
+                stopped = len(heights) > 5 and heights[-6] - heights[-1] < 0.0002
+                lead = lead + 0.0005 if stopped else 0.0
+                nudge(left, (0.0, 0.0, -0.0005))
+                yield
+            for _ in range(4):
+                yield
+            ease = max(PUSH - moved - 0.001, 0.0)  # the sideways push, less a millimetre: a nut pressed on a lip cannot swing
+            for _ in range(10):
+                nudge(left, (0.0, ease / 10, 0.0))
+                yield
+            report(env, f"try {attempt + 1}, drawn {moved * 1000:.1f} mm outward: ")
+            if height() <= 0.0008:
+                return True
+            print(f"[tslot] the foot stays {height() * 1000:.1f} mm up: lifting it out to try again", flush=True)
+            yield from left.move(left.at() + [0.0, BESIDE, OVER], t=T(1.0), label="lift the foot out")
+        return False
 
     def to_line():
         """With the nuts in the slot the foot slides along it: bring the notch onto the line."""
@@ -685,8 +700,6 @@ def demo_script(ctx):
             if seated:
                 yield from to_line()
             report(env, f"foot {'on the bar' if seated else 'NOT down'}: ")
-            yield from left.wait(1.0)
-            report(env, "held for a second: ")
         yield from run(seat())
         return
     if mode == "drive":  # with TSLOT_START=mounted: nobody holds the bracket, which sits on the bar with its nuts in the slot

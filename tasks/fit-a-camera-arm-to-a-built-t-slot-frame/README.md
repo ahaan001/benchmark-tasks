@@ -121,11 +121,11 @@ no meshes, CAD files, textures or other third-party assets in this folder. The r
 
 PhysX cannot cut an M6 thread. Each nut therefore rides its screw on a rule, run every control step in `task.py` from `tslot_rule.py`:
 
-1. A hinge with 2 mN m of friction joins the nut to its screw, so a free nut goes round with the screw. (On the real parts, one turn
+1. A hinge with 5 mN m of friction joins the nut to its screw, so a free nut goes round with the screw. (On the real parts, one turn
    of thread-seal tape on the screw gives that drag and keeps a nut where it is set while the bracket is carried.)
 2. Whatever the nut turns on its screw moves it along the screw: 1 mm a turn, through a spring of 40 N/mm. A nut stopped by the slot's
    lips is pulled against them harder with every further turn, and that pull clamps the foot to the bar.
-3. The torque the screw takes rises with that pull: 2 mN m + 0.2 x 6 mm x clamp load. Half a turn past contact is 20 N and 26 mN m.
+3. The torque the screw takes rises with that pull: 5 mN m + 0.2 x 6 mm x clamp load. Half a turn past contact is 20 N and 29 mN m.
 
 Nothing in the rule knows where the slot is. Whether a nut passes the opening, how far it swings, what stops it and what it is drawn up
 against are all contact between the nut's hulls and the bar's boxes. Run up lengthwise, a nut jams against the foot and its screw goes

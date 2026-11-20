@@ -186,6 +186,7 @@ def foot_outline() -> np.ndarray:
 
 
 FOOT_CORNERS = np.array([[sx * FOOT[0] / 2, sy * FOOT[1] / 2, 0.0] for sx in (-1, 1) for sy in (-1, 1)])
+NUT_LOW = np.array([[sc + sx * (NUT_A / 2 - (NUT_F - NUT_BEVEL_FROM)), sy * (NUT_B - NUT_PLAY) / 2, -SCREW_END] for sc in (-SCREW_DX, SCREW_DX) for sx in (-1, 1) for sy in (-1, 1)])  # the corners of both nuts' undersides
 SCREWS = np.array([[-SCREW_DX, 0.0, 0.0], [SCREW_DX, 0.0, 0.0]])  # screw a and screw b, on the foot's underside
 NOTCH_POINT = np.array([0.0, -FOOT[1] / 2, 0.0])
 SOCKET_FLOOR = FOOT[2] + HEAD_H - SOCKET_DEPTH  # above the foot's underside

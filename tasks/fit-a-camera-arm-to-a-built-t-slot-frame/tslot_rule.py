@@ -24,7 +24,7 @@ HOLD_STEPS = 20  # 1 s at 20 Hz
 
 # -- the thread --------------------------------------------------------------------------------------------------------------------------------
 K_THREAD = 40000.0  # N/m: the pull on a held-back nut per metre the thread is wound past it (bracket, lips and screw together; est)
-T_RUN = 0.002  # N m: what carries a free nut round with its screw (est; a turn of thread-seal tape on a real screw)
+T_RUN = 0.005  # N m: what carries a free nut round with its screw, also when its boss rubs on a lip (est; a turn of thread-seal tape on a real screw)
 T_HEAD = 0.001  # N m: the screw's own drag in the foot
 NUT_FACTOR = 0.2  # tightening torque = 0.2 x thread diameter x clamp load
 THREAD_D = 0.006

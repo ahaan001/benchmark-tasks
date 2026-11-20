@@ -1,8 +1,8 @@
 """A kinematic stand-in for the simulator, to shake out the demo and the scorer's wiring without simulator time.
 
 Not physics. The arms follow their commands with a lag. The bracket follows a hand whose fingers have closed on its arm; over the marked
-bar its nuts either pass the slot's opening (both within the play the nut colliders have, lengthwise) or land on the lips and keep the foot
-9.6 mm up. The driver follows the hand that holds its neck; its blade goes into a socket only when it is over it and its hex is lined up,
+bar it is pushed out of what it would cut into: a nut's underside goes below the bar's face only inside the slot's opening, whose lips
+then stop it sideways, and otherwise stands on a lip. The driver follows the hand that holds its neck; its blade goes into a socket only when it is over it and its hex is lined up,
 and a blade in a socket turns the screw with the hand. The nuts follow the thread rule as contact would have them: carried round with the
 screw until the boss meets the lips at a quarter turn, then up the screw a pitch a turn until the flange meets the lips, then wound. An
 unheld bracket that no nut holds tips over its camera end. It runs the task's real demo_script, Trial and rule, so it finds wrong calls,
@@ -42,7 +42,6 @@ UP = np.array([0.0, 0.0, TOP])
 DT = 1.0 / d.CONTROL_HZ
 LAG, FINGER_LAG = 0.35, 0.5
 CAMERA = (0.050, 0.050, 0.040)  # a box round a wrist camera and its mount, in the gripper's frame (a D405 is 42 x 42 x 23 mm)
-ENTER = (g.SLOT_OPEN - (g.NUT_B - g.NUT_PLAY)) / 2  # how far off the slot's middle a lengthwise nut still passes the opening: 0.34 mm
 STOP_CW, STOP_CCW = g.boss_stops()
 TIP_OVER = 6.0  # degrees an unheld, unfastened bracket tips over the bar's inner edge before its nuts wedge in the opening
 
@@ -163,18 +162,30 @@ class World:
                     if name == "bracket":
                         self.tipped = False
 
-    def nuts_pass(self, pos, rot) -> bool:
-        """Both nuts over the slot's opening, lengthwise within what the opening lets through."""
-        for k in range(2):
-            c = pos + rot @ g.SCREWS[k]
-            turn = yaw_of(rot) - self.nut_turn(k)
-            turn = (turn + 90.0) % 180.0 - 90.0
-            if abs(c[1] - g.MARKED_Y) > ENTER or abs(turn) > 2.0 or not g.SIDE_SPAN[0] + 0.008 <= c[0] <= g.SIDE_SPAN[1] - 0.008:
-                return False
-        return True
-
     def over_marked_bar(self, pos) -> bool:
         return abs(pos[1] - g.MARKED_Y) < g.BAR / 2 + 0.01 and g.SIDE_SPAN[0] - 0.03 < pos[0] < g.SIDE_SPAN[1] + 0.03
+
+    def rest_on_bar(self, pos, rot) -> np.ndarray:
+        """The bracket pushed out of the marked bar: a nut's underside may be below the bar's face only inside the slot's opening, whose lips
+        then stop it sideways, and the foot may not be below the face at all."""
+        pos = np.array(pos, float)
+        face, lo, hi = TOP + g.BAR, g.MARKED_Y - g.SLOT_OPEN / 2, g.MARKED_Y + g.SLOT_OPEN / 2
+        for _ in range(4):
+            pts = g.NUT_LOW @ rot.T + pos
+            deep = pts[:, 2] < face - 0.0004
+            if deep.any():  # down in the opening
+                pos[1] += max(lo - pts[deep, 1].min(), 0.0) - max(pts[deep, 1].max() - hi, 0.0)
+                pts = g.NUT_LOW @ rot.T + pos
+            out = (pts[:, 1] < lo - 1e-9) | (pts[:, 1] > hi + 1e-9)
+            if out.any() and pts[out, 2].min() < face:  # over a lip: it stands on it
+                pos[2] += face - pts[out, 2].min()
+                self.note("the nuts land on the lips")
+            foot = g.FOOT_CORNERS @ rot.T + pos
+            if foot[:, 2].min() < face:
+                pos[2] += face - foot[:, 2].min()
+        if (g.NUT_LOW @ rot.T + pos)[:, 2].max() < face - 0.002:
+            self.note("both nuts pass the slot's opening")
+        return pos
 
     def carry_bracket(self):
         if "bracket" not in self.held:
@@ -182,18 +193,8 @@ class World:
         side, p, rr = self.held["bracket"]
         hand_pos, hand = self.tcp(side)
         pos, rot = hand_pos + hand @ p, hand @ rr
-        was_in = self.bracket[0][2] - TOP < g.BAR + g.SCREW_END - 0.0005 and self.over_marked_bar(self.bracket[0])
         if self.over_marked_bar(pos):
-            if was_in:  # nuts in the slot: the foot stays within the play across it, and comes down to the bar's face
-                pos = np.array([pos[0], float(np.clip(pos[1], g.MARKED_Y - ENTER, g.MARKED_Y + ENTER)), max(pos[2], TOP + g.BAR)])
-                rot = g.rot_z(float(np.clip(yaw_of(rot), -1.0, 1.0)))
-            elif pos[2] - TOP < g.BAR + g.SCREW_END:
-                if self.nuts_pass(pos, rot):
-                    self.note("both nuts pass the slot's opening")
-                    pos = np.array([pos[0], pos[1], max(pos[2], TOP + g.BAR)])
-                else:
-                    self.note("the nuts land on the lips")
-                    pos = np.array([pos[0], pos[1], TOP + g.BAR + g.SCREW_END])
+            pos = self.rest_on_bar(pos, rot)
         self.bracket = [pos, rot]
 
     def support(self, xy) -> tuple:
