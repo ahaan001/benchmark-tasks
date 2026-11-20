@@ -98,17 +98,18 @@ no meshes, CAD files, textures or other third-party assets in this folder. The r
   upright walls (cavity 20.57 mm wide), two slabs for the cavity's 45 degree lower walls, and the floor 12.32 mm down. The length of the
   upright wall under each lip (2.7 mm) is scaled off the catalog drawing, which does not dimension it. The lips' 2 degree "drop lock"
   slope and the bars' other three slots are not modelled. Four 80/20 40-4302 inside corner brackets are plain boxes.
-- **Bracket** (one free body of 168 g with the camera and hardware, friction 0.7): foot 80 x 40 x 6.4 mm, arm 20 x 12 mm to 200 mm from
+- **Bracket** (one free body of 168 g with the camera and hardware, friction 0.4): foot 80 x 40 x 6.4 mm, arm 20 x 12 mm to 200 mm from
   the foot's centre, side plate, D405 as a 42 x 42 x 23 mm box of 60 g. The 6.4 mm foot is chosen so that an M6 x 16 screw's end is
   flush with the nut's underside exactly when the nut hangs at the right height: that is how the nuts are set for a trial.
 - **Screws** (two hinges in the foot): ISO 4762 heads, 10 mm across and 6 mm high. Each head is a floor and six slabs round a hex socket
   5.1 mm across flats and 3.5 mm deep, so the only thing that turns a screw is a hex blade in its socket. The foot's holes are printed
-  6.0 mm, a light push fit on the screws: a screw stays where it is put, turns against 20 mN m (estimated) and has no play, as a hinge has none.
+  6.0 mm, a light push fit on the screws: a screw stays where it is put and turns against 20 mN m (estimated).
 - **Nuts** (each a slide along its screw and a hinge on that slide): 80/20 3931, flange 15.75 x 7.75 x 4.57 mm with bevelled ends, boss
   7.82 mm long and 1.5 mm high, both as convex hulls. Two diagonally opposite corners of flange and boss are cut back, as on the part
   (radius 3.6 mm on the boss and 3.0 mm on the flange, estimated from the catalog drawing, which gives no radii): lengthwise in the
-  opening the boss can turn 92.7 degrees clockwise and 5.7 degrees the other way before its square corners meet the lips. The colliders
-  have the part's own width. The ridges on the flange's top are not modelled; nut on aluminium has friction 0.6.
+  opening the boss can turn 92.7 degrees clockwise and 5.7 degrees the other way before its square corners meet the lips. A nut's play
+  on its thread, about 0.15 mm either way at the flange (estimated from the 6H/6g fit), is not a joint here: the colliders are 0.3 mm
+  narrower than the part instead, 7.45 mm. The ridges on the flange's top are not modelled; steel and PETG on anodised aluminium have friction 0.4.
 - **Driver** (free body, 79 g): Wera 454 HF, 5 x 100 mm. A 4.98 mm hex blade as a convex hull, a neck 30 x 22 x 21 mm that a gripper
   takes by its two flat sides, the 99 mm bar and the 20 mm short arm. The split of the 49 mm handle into neck and bar is ours. The
   blade's tip is chamfered 1 mm over its last 1.5 mm, which leads it into a socket from 1 mm off its axis; a real tip's chamfer is
