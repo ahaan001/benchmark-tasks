@@ -251,9 +251,23 @@ class World:
                 free = float(np.clip(cw + math.degrees(turned), -STOP_CCW, STOP_CW)) - cw  # the boss in the opening lets it turn a quarter turn, one way
             self.nut[k] += turned - math.radians(free)  # what the screw turned and the nut did not, the nut has turned on the screw
             target = float(np.clip(g.PITCH * self.nut[k] / (2.0 * math.pi), *g.TRAVEL))
-            top = g.NUT_DROP if seated and self.nut_turn(k) > 20.0 else g.TRAVEL[1]  # under the lips it rises to them; lengthwise, on up to the foot
-            self.travel[k] = min(target, top)
+            under = seated and self.nut_turn(k) > 20.0
+            if under and target > g.NUT_DROP - max(float(pos[2]) - TOP - g.BAR, 0.0):  # the nut meets the lips: from here the screw draws the foot down flat
+                self.settle_flat()
+                pos = self.bracket[0]
+            self.travel[k] = min(target, g.NUT_DROP if under else g.TRAVEL[1])  # under the lips it rises to them; lengthwise, on up to the foot
         self._screw_was = list(self.screw)
+
+    def settle_flat(self):
+        """The bracket down flat on the marked bar, where it is; a hand that holds it keeps holding it there."""
+        pos, rot = self.bracket
+        pos = np.array([pos[0], pos[1], TOP + g.BAR])
+        rot = g.rot_z(yaw_of(rot))
+        self.bracket = [pos, rot]
+        if "bracket" in self.held:
+            side = self.held["bracket"][0]
+            hand_pos, hand = self.tcp(side)
+            self.held["bracket"] = (side, hand.T @ (pos - hand_pos), hand.T @ rot)
 
     def nut_grips(self, k) -> bool:
         return self.travel[k] >= g.NUT_DROP - 1e-9 and self.nut_turn(k) > 20.0 and g.PITCH * self.nut[k] / (2.0 * math.pi) - self.travel[k] >= 0.0001

@@ -364,7 +364,8 @@ OVER = 0.013  # it comes down from this far above the bar: the nuts' undersides 
 BESIDE = 0.0025  # the foot is aimed this far to the inner side of the slot's line
 ROLL = 6.0  # degrees the camera end is tipped up: the nuts' outer lower edges then lead, and a real 7.75 mm nut tipped so still passes the opening
 EDGE_AT = -0.001  # those edges are brought over the opening, this far across its middle line
-HOOK = 0.0018  # and go this far down into it
+HOOK = 0.0004  # and go this far down into it: there the nuts' tipped undersides come to lie on the inner lip
+FELL = 0.0012  # deeper than this, the nuts have come off the inner lip and are in the opening
 PUSH, PUSH_STEP = 0.009, 0.0002  # then the hand's command goes this far outward, at 4 mm a second: what the foot does not follow is a light push on the outer lip
 LEAD = 0.004  # the furthest a lowering command runs ahead of what the hand holds: the arm follows late and in jumps of 2 to 3 mm
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
@@ -512,9 +513,10 @@ def demo_script(ctx):
     def lower():
         """Both nuts into the slot, by feel. The arm cannot place them to the 0.19 mm either side that the opening leaves, and nuts drawn
         across the lips turn on their screws. So the hand tips the camera end up 6 degrees, brings the nuts' outer lower edges over the
-        opening, which is 8 mm wide for an edge, and lets them down into it; draws the foot outward until the nuts lie against the outer
-        lip, which puts them just inside it once level; takes that push off; then brings the foot level and down together, steering by
-        the bracket's own tilt, so that the camera end never drops and the nuts do not wedge. Returns whether the foot is down."""
+        opening, which is 8 mm wide for an edge, and lets them down until the nuts' tipped undersides lie on the inner lip; draws the foot
+        outward until the nuts slide off that lip and drop into the opening against the outer one; takes that push off; then brings the
+        foot level and down together, steering by the bracket's own tilt, so that the camera end never drops and the nuts do not wedge.
+        Returns whether the foot is down."""
         pos, _ = bracket()
         yield from left.arc(np.array([pos[0], pos[1], TOP + g.BAR]), (1.0, 0.0, 0.0), ROLL, t=T(1.0), label="tip the camera end up")
         over = np.array([line_x, g.MARKED_Y + EDGE_AT, TOP + g.BAR + 0.0015])
@@ -522,25 +524,29 @@ def demo_script(ctx):
         yield from left.servo(over, tol=0.0012, timeout=T(1.5), gain=0.3, read=edge_point, label="the nuts' edges over the opening")
         e = low_edge()
         print(f"[tslot] tipped {tipped():.1f} degrees; the nuts' outer edges {e[1] * 1000:+.2f} mm across the slot, {e[2] * 1000:+.2f} mm from the bar's face", flush=True)
-        yield from ease_down(left, lambda: low_edge()[2], -HOOK)  # the edges down into the opening
+        yield from ease_down(left, lambda: low_edge()[2], -HOOK)  # the edges down into the opening, until the nuts' undersides lie on the inner lip
         e = low_edge()
-        if e[2] > -0.0006:
+        if e[2] > -0.00015:
             print(f"[tslot] the nuts' edges stay {e[2] * 1000:+.2f} mm from the bar's face, {e[1] * 1000:+.2f} mm across: on a lip", flush=True)
             return False
-        ys = [float(bracket()[0][1])]
-        still = 0
-        for _ in range(round(PUSH / PUSH_STEP)):  # outward, until the nuts lie against the outer lip: the foot then stops for longer than the arm's own friction holds it
+        for _ in range(8):  # a light press, so that the nuts go down when they come off the inner lip
+            nudge(left, (0.0, 0.0, -0.00025))
+            yield
+        ys, still, fell = [float(bracket()[0][1])], 0, False
+        for _ in range(round(PUSH / PUSH_STEP)):  # outward: the nuts slide off the inner lip and drop into the opening, against the outer lip
             nudge(left, (0.0, -PUSH_STEP, 0.0))
             yield
             ys.append(float(bracket()[0][1]))
             still = still + 1 if abs(ys[-1] - ys[-2]) < 0.00002 else 0
-            if still * PUSH_STEP >= 0.0036:
+            fell = low_edge()[2] <= -FELL
+            if fell or still * PUSH_STEP >= 0.0036:  # in, or stopped for longer than the arm's own friction holds it
                 break
-        nudge(left, (0.0, min(still * PUSH_STEP, 0.0036) - 0.001, 0.0))  # the push taken off again, but for a millimetre
-        for _ in range(4):
+        nudge(left, (0.0, 0.0015 if fell else min(still * PUSH_STEP, 0.0036) - 0.001, 0.0))  # most of the sideways push off again
+        for _ in range(6):
             yield
         e = low_edge()
-        print(f"[tslot] drawn {(ys[0] - ys[-1]) * 1000:.1f} mm outward: the nuts' outer edges {e[1] * 1000:+.2f} mm across (the outer lip is at {-g.SLOT_OPEN / 2 * 1000:.2f}), {e[2] * 1000:+.2f} mm from the face", flush=True)
+        print(f"[tslot] drawn {(ys[0] - ys[-1]) * 1000:.1f} mm outward, {'the nuts dropped in' if fell else 'the foot stopped'}: outer edges {e[1] * 1000:+.2f} mm across "
+              f"(the outer lip is at {-g.SLOT_OPEN / 2 * 1000:.2f}), {e[2] * 1000:+.2f} mm from the face, tipped {tipped():.1f}", flush=True)
         stuck, lead = 0, 0.0
         for _ in range(400):  # level and down together
             roll, h = tipped(), height()
