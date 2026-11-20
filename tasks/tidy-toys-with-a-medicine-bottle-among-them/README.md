@@ -88,11 +88,11 @@ python test_task.py                                             # the rules, the
 ```
 
 Mechanism tests, 200 control steps or fewer each: `--mode settle` (the parts at rest), `--mode cap` (the cap taken, set on the
-free-standing vial's neck and turned on), `TIDY_START=cap_on ... --mode snap` (the vial held, the cap pushed down and turned
-until it snaps, the vial let go), `TIDY_START=capped ... --mode place` (the closed vial by its cap into the lock box), `--mode lid`, `--mode toys` (one pick and drop), `TIDY_START=lid_down ... --mode
-lock` (the hasp) and `TIDY_START=lid_down ... --mode dials` (the dials). `TIDY_START` changes the start only for that test.
-`python dryrun.py full --clear` runs the demo on the stand-in and lists how near each arm's collision hulls, and a box where
-each wrist camera sits, come to everything in the scene and to the other arm.
+free-standing vial's neck and turned on), `TIDY_START=capped ... --mode place` (the closed vial by its cap into the lock box),
+`--mode lid`, `--mode toys` (one pick and drop), `TIDY_START=lid_down ... --mode lock` (the hasp) and `TIDY_START=lid_down ...
+--mode dials` (the dials). `TIDY_START` changes the start only for that test. `python dryrun.py full --clear` runs the demo on
+the stand-in and lists how near each arm's collision hulls, and a box where each wrist camera sits, come to everything in the
+scene and to the other arm.
 
 ## Run a trial
 
