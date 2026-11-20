@@ -6,12 +6,11 @@ One card at a time, hands pointing straight down:
 1. Fingers 4 cm apart: both fingertips come down on the back half of the top card and push it forward until most of
    it hangs over the pack's front edge, the tips stopping short of the edge so they never lever on the overhang.
 2. The tips lift. The card tips over the edge and comes to rest leaning, its front edge on the felt.
-3. The tips come down on the card near that front edge and draw it straight along its own length until its back end
-   is 3 cm past the pack and it lies flat on the felt.
-4. The tips lift and the fingers close into one fingertip. It comes down on the card 2 cm from its middle, on the
-   side the card has to go, and slides it straight to its box. Led from in front of its middle a card follows like a
-   trailer and keeps its heading; pushed from behind its middle, or carried under two fingertips that do not press
-   alike, it swings round.
+3. The fingers close into one fingertip. It comes down on the card near that front edge, on its centre line, and
+   draws it straight along its own length until its back end is 3 cm past the pack and it lies flat on the felt.
+4. The fingertip lifts, comes down again 2 cm from the card's middle, on the side the card has to go, and slides it
+   straight to its box. Led from in front of its middle a card follows like a trailer and keeps its heading; pushed
+   from behind its middle, or drawn under two fingertips that do not press alike, it swings round.
 5. The fingertip lifts straight up.
 
 ``DEAL_MODE`` (environment variable): ``full`` (four cards), ``one`` (one card to box 2), and two poor deals to
@@ -48,7 +47,8 @@ SHORT = 0.008  # ... and stop this far short of the pack's front edge
 FRONT = 0.015  # second touch: this far behind the card's front edge
 FREE, SLOW, PUSH, DRAG = 0.30, 0.02, 0.04, 0.06  # m/s
 HOVER = 0.03
-ONE_TIP = ("rise", "over the lead", "touch the lead", "slide", "place", "settle", "lift")  # fingers closed
+ONE_TIP = ("over the front", "touch the front", "draw", "rise", "over the lead", "touch the lead", "slide", "place",
+           "settle", "lift")  # phases with the fingers closed into one fingertip
 DOWN = ik.matrix_to_quat_xyzw(grip_rotation(0.0))
 
 
@@ -56,8 +56,9 @@ def jobs(cards: list[str]) -> list[tuple[str, str, tuple[float, float]]]:
     """(arm, card, box centre) in dealing order."""
     if MODE in ("one", "light", "edge"):
         return [("left", cards[0], L.BOXES[int(os.environ.get("DEAL_BOX", "2")) - 1])]
+    # each arm deals its outer box first, so no card is carried past one already dealt
     return [("left", cards[0], L.BOXES[0]), ("left", cards[1], L.BOXES[1]),
-            ("right", cards[2], L.BOXES[2]), ("right", cards[3], L.BOXES[3])]
+            ("right", cards[2], L.BOXES[3]), ("right", cards[3], L.BOXES[2])]
 
 
 class Dealer:
@@ -168,6 +169,8 @@ class Dealer:
             if self.anchor is None:
                 self.anchor = self.tcp[arm].copy()
             up = self._move(arm, self.anchor + [0.0, 0.0, 0.02], SLOW)
+            if self.tcp[arm][2] - self.anchor[2] > 0.008:  # clear of the card: the fingers close into one fingertip
+                self.grip[arm] = 0.0
             self.still = self.still + 1 if self.last is not None and np.linalg.norm(pos - self.last) < 1e-4 else 0
             self.last = pos.copy()
             waited = self._wait(0.5)
