@@ -69,7 +69,11 @@ front edge (it stays shut); slide the lock's button (it does not move).
 
 The demo run, by the scorer's log: vial held at 6.0 s; cap on its lugs at 10.9 s and snapped at 13.2 s; vial let go in the lock
 box at 22.3 s, standing; lid shut by 30.7 s; hasp caught at 35.6 s; the middle dial 67 degrees off its code at 39.9 s (score
-0.75); last toy in the basket and both arms clear and still for 1 s at 44.5 s (1.0).
+0.75); last toy in the basket and both arms clear and still for 1 s at 44.5 s (1.0). In the video the right wrist view shows the
+middle dial's mark gone after the stroke, and the last frames show both arms outside the basket and the box.
+
+The `literal` run was made on an earlier commit than the recorded demo's; the changes between them (a whole-trial zero for a
+thing knocked off the table removed, dial marks added, the arms' end pose moved) do not touch the rule it exercises.
 
 Mechanism tests in the simulator during development (CPU physics, no cameras, 200 control steps each; the approach routes of
 `cap`, `lid`, `lock` and `toys` were changed afterwards, and the full demo above runs the final ones): `settle`: every part at
