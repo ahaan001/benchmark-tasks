@@ -44,13 +44,15 @@ NAMES = ("a", "b")  # the two screws and their nuts: a nearer the robot once mou
 
 # Start variants for the mechanism tests in the README (never the submitted demo, which starts as the setup says):
 # TSLOT_START=mounted has the bracket start on the marked bar, both nuts down in the slot, and the driver's block close by;
-# TSLOT_START=askew has it start just above the bar with nut a turned 20 degrees off the slot's line.
+# TSLOT_START=askew has it start just above the bar with nut a turned 20 degrees off the slot's line;
+# TSLOT_START=onlips has it start on the bar 8 mm off the slot, standing on its nuts on a lip, its arm propped level.
 START = os.environ.get("TSLOT_START", "")
-if START not in ("", "mounted", "askew"):
+if START not in ("", "mounted", "askew", "onlips"):
     raise ValueError(f"TSLOT_START={START!r}")
 BLOCK_XY = (0.20, -0.17) if START == "mounted" else g.BLOCK_XY
 DRIVER_YAW = 75.0 if START == "mounted" else 0.0  # in the mounted test the driver stands turned, so that the hand takes it near the top of its stroke
 ASKEW_DEG, ASKEW_UP = 20.0, 0.003
+ONLIPS = (0.003, 0.008)  # where the foot starts in the on-the-lips test, from where it belongs
 TRAVEL_ARMATURE = 0.2  # kg in the slide's own direction: lets the solver carry the thread's spring through the light nut
 
 LOOKS = {name: m.Look(color=m.rgb(*rgb), metallic=0.6 if name in ("aluminium", "zinc", "steel") else 0.0, roughness=0.35 if name in ("aluminium", "zinc", "steel") else 0.7)
@@ -157,6 +159,8 @@ def bracket_start() -> tuple:
         return np.array([g.MOUNT_XY[0], g.MOUNT_XY[1], g.BAR]), g.MOUNT_YAW
     if START == "askew":
         return np.array([g.MOUNT_XY[0], g.MOUNT_XY[1], g.BAR + g.SCREW_END + ASKEW_UP]), g.MOUNT_YAW
+    if START == "onlips":
+        return np.array([g.MOUNT_XY[0] + ONLIPS[0], g.MOUNT_XY[1] + ONLIPS[1], g.BAR + g.SCREW_END]), g.MOUNT_YAW
     return np.array([g.START_XY[0], g.START_XY[1], g.SUPPORT_H]), g.START_YAW
 
 
@@ -193,9 +197,10 @@ def driver():
 
 
 FRAME, SUPPORTS, BLOCK, BRACKET, DRIVER = frame(), supports(), block(), bracket(), driver()
-PROP = m.fixed("prop", (g.MOUNT_XY[0], g.MOUNT_XY[1] + 0.135, TOP), [("prop", box_mesh((0.030, 0.020, g.BAR), (0.0, 0.0, g.BAR / 2)), "foam")],
-               [m.col_box("c_prop", (0.030, 0.020, g.BAR), (0.0, 0.0, g.BAR / 2))], LOOKS, friction=(0.9, 0.8))  # holds the arm level in the mounted test, where no hand does
-OBJECTS = [FRAME, BLOCK, BRACKET, DRIVER] + ([PROP] if START == "mounted" else [] if START else [SUPPORTS])
+PROP_H = g.BAR + (g.SCREW_END if START == "onlips" else 0.0)
+PROP = m.fixed("prop", (g.MOUNT_XY[0], g.MOUNT_XY[1] + (ONLIPS[1] if START == "onlips" else 0.0) + 0.150, TOP), [("prop", box_mesh((0.030, 0.012, PROP_H), (0.0, 0.0, PROP_H / 2)), "foam")],
+               [m.col_box("c_prop", (0.030, 0.012, PROP_H), (0.0, 0.0, PROP_H / 2))], LOOKS, friction=(0.9, 0.8))  # holds the arm level in the tests that start on the bar, where no hand does
+OBJECTS = [FRAME, BLOCK, BRACKET, DRIVER] + ([PROP] if START in ("mounted", "onlips") else [] if START else [SUPPORTS])
 
 
 # -- reading the scene ----------------------------------------------------------------------------------------------------------------------
@@ -354,7 +359,7 @@ OVER = 0.013  # it comes down from this far above the bar: the nuts' undersides 
 SEEK = (0.0, 0.0004, -0.0004, 0.0008, -0.0008, 0.0012, -0.0012, 0.0016, -0.0016)  # sideways steps across the slot when the nuts have landed on the lips
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
 TURN_RATE = 45.0  # degrees a second
-MODES = ("full", "none", "held", "unheld", "one_screw", "off_line", "settle", "take", "drive")
+MODES = ("full", "none", "held", "unheld", "one_screw", "off_line", "settle", "take", "drive", "seat")
 
 
 def demo_script(ctx):
@@ -364,7 +369,8 @@ def demo_script(ctx):
     and turning back between strokes. It then stands the driver back in its block, and the left hand lets go last.
     Other modes, for the README's table: none does nothing; held never lets go of the arm; unheld lets go as soon as the foot is on the bar;
     one_screw tightens screw a only; off_line mounts the bracket 4 mm from the line. Mechanism tests of 200 steps or fewer: settle (any start),
-    take (grip and lift the bracket), drive (with TSLOT_START=mounted: the driver into screw a and one stroke)."""
+    take (grip and lift the bracket), drive (with TSLOT_START=mounted: the driver into screw a and one stroke), seat (with TSLOT_START=onlips:
+    the hand takes a bracket whose nuts stand on a lip, brings them over the slot and lowers them in)."""
     import demokit as d
     from yam_arena import ik
     from yam_arena.constants import FINGER_OPEN
@@ -379,8 +385,8 @@ def demo_script(ctx):
     flags = {"seated": False, "done": False}
     threads = [r.Thread(), r.Thread()]  # the demo's own count of how far each thread is wound, from the joints it can see
     lags = [0.0, 0.0]
-    take_grip, hold_grip = d.tilted(HOLD_TILT, 0.0), d.tilted(HOLD_TILT, -90.0)
-    pace = {"take": 0.6, "drive": 0.45}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
+    hold_grip = d.tilted(HOLD_TILT, g.MOUNT_YAW - 90.0)
+    pace = {"take": 0.6, "drive": 0.45, "seat": 0.5}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
     T = lambda seconds: seconds * pace  # noqa: E731
     line_x = g.LINE_X + (0.004 if mode == "off_line" else 0.0)
 
@@ -413,7 +419,8 @@ def demo_script(ctx):
         arm._solve(ik.tcp_pose(arm.q, arm.base)[0] + np.asarray(step, float), arm.grip.rot)
 
     # -- the left hand: the bracket ------------------------------------------------------------------------------------------------------
-    def take_bracket():
+    def take_bracket(lift: float = CARRY_UP):
+        take_grip = d.tilted(HOLD_TILT, yaw(bracket()[1]) - 90.0)  # leaning back along the arm, whichever way the bracket lies
         a = left.approach_axis(take_grip)
         spot = point(g.GRIP_POINT) - a * PAD_MID  # read once: a servo's goal must stand still
         back = spot - 0.07 * a
@@ -424,8 +431,8 @@ def demo_script(ctx):
         yield from left.close(g.ARM_W, 20.0, label="take the arm")
         yield from left.wait(0.2)
         grip_at = lambda: point(g.GRIP_POINT)  # noqa: E731
-        up = point(g.GRIP_POINT) + [0.0, 0.0, CARRY_UP]
-        yield from left.servo(lambda t: up - [0.0, 0.0, max(CARRY_UP - 0.05 / pace * t, 0.0)], tol=0.003, timeout=T(3.0), read=grip_at, label="lift the bracket")
+        up = point(g.GRIP_POINT) + [0.0, 0.0, lift]
+        yield from left.servo(lambda t: up - [0.0, 0.0, max(lift - 0.05 / pace * t, 0.0)], tol=0.003, timeout=T(3.0), read=grip_at, label="lift the bracket")
         report(env, "bracket lifted: ")
 
     def carry():
@@ -435,6 +442,11 @@ def demo_script(ctx):
         hand = over + g.rot_z(g.MOUNT_YAW) @ g.GRIP_POINT - a * PAD_MID
         yield from left.move(hand + [0.0, 0.0, CARRY_OVER], grip=hold_grip, t=T(4.5), label="carry the bracket round to the bar")
         yield from left.wait(0.3)
+        yield from over_slot()
+
+    def over_slot():
+        """Square the foot to the bar and bring its middle over the slot, the nuts' undersides 3.4 mm above the bar's face."""
+        over = np.array([line_x, g.MARKED_Y, TOP + g.BAR + OVER])
         left.trim = np.zeros(3)
         foot = lambda: point((0.0, 0.0, 0.0))  # noqa: E731
         for _ in range(2):  # square the foot to the bar, then bring its middle over the slot
@@ -645,6 +657,18 @@ def demo_script(ctx):
         return
     if mode == "take":
         yield from run(left_hand())
+        return
+    if mode == "seat":  # with TSLOT_START=onlips: from standing on its nuts on a lip, over the slot and down into it
+        def seat():
+            yield from take_bracket(lift=0.006)
+            yield from over_slot()
+            seated = yield from lower()
+            if seated:
+                yield from to_line()
+            report(env, f"foot {'on the bar' if seated else 'NOT down'}: ")
+            yield from left.wait(1.0)
+            report(env, "held for a second: ")
+        yield from run(seat())
         return
     if mode == "drive":  # with TSLOT_START=mounted: nobody holds the bracket, which sits on the bar with its nuts in the slot
         flags["seated"] = True

@@ -257,7 +257,7 @@ class World:
 
     def unheld(self):
         pos, rot = self.bracket
-        if "bracket" in self.held or self.tipped or task.START == "mounted" or not self.over_marked_bar(pos) or pos[2] - TOP > g.BAR + 0.001:
+        if "bracket" in self.held or self.tipped or task.START in ("mounted", "onlips") or not self.over_marked_bar(pos) or pos[2] - TOP > g.BAR + 0.001:
             return
         if not any(self.nut_grips(k) for k in range(2)):  # nothing holds the foot down: the camera end goes down, the foot's outer edge up
             edge = np.array([pos[0], g.MARKED_Y + g.BAR / 2, TOP + g.BAR])
