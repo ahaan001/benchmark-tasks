@@ -74,11 +74,14 @@ turned 40 degrees or more), is drawn up against them, and its screw has turned a
 
 Which screw is driven first, which hand does what and where the driver is put down are free.
 
-**Real trial.** Ruler from the middle of the line to the notch. Then each nut is tested by the bracket's own overhang, which is
-0.15 N m about the bar's inner edge: take the other screw right out. A nut that grips keeps the foot flat on the bar (a 0.5 mm feeler
-goes under no corner); one that does not lets the camera end drop to the table. Put that screw back snug and test the other nut the
-same way. Screws are left snug in this task; the final torque (6 N m for an M6 hammer nut in the maker item's data) is applied later
-with a torque key and is not part of it.
+**Real trial.** Both nuts are read before any screw is loosened. Ruler from the middle of the line to the notch. A nut lies crosswise
+under both lips when a hooked wire (a 1.5 mm hex key will do) slid along under each lip from the nearer end of the foot stops on its
+flange about 6 mm in, on both sides; a torch along the slot shows the same. It is drawn up when its screw is snug: tried with the
+driver, it does not turn on freely. A nut that is under the lips can be snug against nothing but the lips, so the two together are the
+simulator's "grips". As a check on the whole, a bracket held by a gripping nut lies flat with both hands off (its overhang is 0.15 N m
+about the bar's inner edge; a 0.5 mm feeler goes under no corner of the foot). For 0.25, look along the bar's face: no part of either
+nut is above it. Screws are left snug in this task; the final torque (6 N m for an M6 hammer nut in the maker item's data) is applied
+later with a torque key and is not part of it.
 
 What the scripted demo's modes score in the simulator (CPU physics, no cameras, all five wrong-way modes in one launch):
 
