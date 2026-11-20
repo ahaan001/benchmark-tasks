@@ -16,5 +16,5 @@
   "reset_notes": "Gather the cards, square the deck and set it face down inside its pencil outline, long side toward the far boxes. Nothing is consumed. Use a new deck every 50 trials, or sooner if a card is bent, creased or sticky (a deck costs about $4). Brush the felt flat and check the tape.",
   "fidelity": "Cards are rigid plates at true size, 0.29 mm and 1.55 g: they do not bend. The top 10 cards are separate bodies; the 42 below are one block. Friction is plain Coulomb friction: card on card 0.12 (the maker's 7 degree slip test), card on felt 0.21 (est), fingertip on card 0.31 (the simulator's stock finger). Air film, cling and warp are not modelled, so a real pack gives up a second card more easily. Card backs are plain red.",
   "run_limit": "2,400 steps (2 minutes at 20 Hz)",
-  "scores": "Dream-1 run: pending; demo: pending"
+  "scores": "Dream-1 run: 0.0 (2,400 steps; it reached the deck late in the run and pushed the top cards 2 to 3 cm back; no card dealt); demo: 1.0 (full score at step 1,239 of 2,400)"
 }

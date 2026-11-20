@@ -29,23 +29,28 @@ Category: Societal relatability. Two arms, no tools.
 3. **A stiff card cannot simply be dragged over the pack's edge.** Once its middle passes the edge it tips, and a
    fingertip pressing on the overhang levers it on the cards below: the second card comes out with it and the next
    ones are pushed back. The card has to be eased off: pushed until most of it overhangs, let go so it tips onto the
-   felt by its own weight, then taken by its felt end.
-4. **Steering and leaving it.** The card is steered by friction alone into a box with 1.5 cm to spare, and the
-   fingertips have to leave straight up or they drag it out again.
-5. **Four times, with the pack one card lower each time.**
+   felt by its own weight, then drawn clear by its felt end.
+4. **A card slid by friction goes where its leading point takes it.** Led from in front of its middle it trails
+   behind the fingertip and keeps its heading. Pushed from behind its middle, or carried under two fingertips that
+   do not bear alike, it swings round: in development runs cards arrived 30 to 90 degrees askew until the carry was
+   done with one fingertip set 2 cm ahead of the card's middle.
+5. **Pressing too hard or pushing too fast takes the next card too.** At 6.4 cm/s the second card followed 12 mm; at
+   4 cm/s, 1 mm. Under a 0.7 mm press the cards beneath crept 4 mm at every deal; under 0.45 mm, 1 mm.
+6. **Four times, with the pack one card lower each time,** and every card left inside a box with 1.5 cm to spare
+   without disturbing the ones already dealt.
 
-Simulator runs of poor deals (200 steps each, `DEAL_MODE`):
+Simulator runs of poor deals (200 steps each, made during development with `DEAL_MODE`):
 
 | Run | What the fingertips do | Result |
 |---|---|---|
-| `one` | The demo's deal of one card | Top card in box 2, 1.3 and 2.5 mm from its centre; second card moved 0.4 mm; pack 0.0 mm; score 0.25 |
+| `one` | The demo's deal of one card | Top card in its box, under 3 mm from the centre; second card moved 1 mm; pack 0.0 mm; score 0.25 |
 | `light` | First touch 1 mm above the card; then the card is taken by its front end and dragged straight over the pack's edge | The push carried nothing. The straight drag took the second card out with the first (left leaning on the pack, a stray) and pushed the third and fourth back 6 and 5 mm: score 0 when the run ended |
 | `edge` | Come down 1 cm behind the pack, 1.5 mm below its top, and push | Seven cards sheared off the pack together: 7 strays, score 0 |
 | `rest` | Nothing | Ten loose cards 0.29 mm apart, no drift in 200 steps; score 0 |
 
 What the simulation does not test: with plain Coulomb friction and identical cards, a fingertip that lands cleanly on
-the top face always takes exactly one card. A real pack gives up a second card more easily (air film, cling, warp).
-See Fidelity.
+the top face and is moved slowly always takes exactly one card. A real pack gives up a second card more easily (air
+film, cling, warp). See Fidelity.
 
 ## Scoring
 
@@ -97,8 +102,9 @@ cloth is made for cards to slide on.
 - The top 10 cards are separate bodies; the 42 below are one block of the same size, weight and friction.
 - Friction is Coulomb friction, averaged over the two surfaces by the simulator: card 0.12 (static) and 0.10, felt
   0.30 and 0.26 (est), the robot's stock fingers 0.5. No air film, cling or warp.
-- Under the fingertips' press (0.4 mm commanded) the ten loose cards close up by about 0.6 mm in total and spring
-  back when released. It is a solver effect, smaller than one pixel, and no card is carried by it.
+- Under the two fingertips' press (0.45 mm commanded) the ten loose cards close up by up to about 0.6 mm in total
+  and spring back when released. It is a solver effect, smaller than one pixel; it is also what lets both fingertips
+  bear on the card. With the solver stiffened until the pile does not give at all, only one fingertip touches.
 - Card backs are a plain red panel with a white border. No artwork, no third-party asset.
 
 ## Run a trial
@@ -124,17 +130,34 @@ tally.
 
 ## The demo
 
-Closed loop on the cards' poses (`deal_demo.py`); it never moves a card except through the fingertips. Fingers 4 cm
-apart and pointing straight down, so two fingertips ride on the card and hold its heading. Per card: both tips come
-down on the back half of the top card, commanded 0.4 mm into it; push it forward at 4 cm/s until the tips are 8 mm
-short of the pack's front edge, the card then overhanging by about 7 cm; lift, and the card tips onto the felt and
-leans on the pack; come down on the card 1.5 cm behind its front edge; slide it at 6 cm/s until its centre is within
-2 mm of the box's centre (its back end leaves the pack on the way and it drops flat); lift straight up. The left arm
-deals boxes 1 and 2, the right arm boxes 3 and 4.
+Closed loop on the cards' poses (`deal_demo.py`); it never moves a card except through the fingertips. Hands point
+straight down throughout. Per card:
+
+1. Fingers 4 cm apart: both fingertips come down on the back half of the top card, commanded 0.45 mm into it, and
+   push it forward at 4 cm/s until the tips are 8 mm short of the pack's front edge. About 7 cm of the card then
+   overhangs.
+2. The tips lift; the card tips onto the felt and leans on the pack. The fingers close into one fingertip.
+3. The fingertip comes down on the card 1.5 cm behind its front edge and draws it straight away from the pack until
+   its back edge is 3 cm clear and it lies flat.
+4. The fingertip lifts, comes down again 2 cm from the card's middle on the side of its box, commanded 2.5 mm into
+   it (a light press on a card lying on the felt sometimes does not bear at all), and slides it at 6 cm/s straight
+   to the box; the last millimetres are steered on the card's own position. If the fingertip slides over the card
+   without taking it, it lifts and comes down again 1 mm deeper, up to three times.
+5. The fingertip lifts 4 cm.
+
+The left arm deals boxes 1 and 2, then goes home; the right arm deals boxes 4 and 3. Each arm deals its outer box
+first, so no card is carried past one already dealt.
 
 ## Results
 
-The 200-step runs are in the table under "Where the difficulty lies". Full-length demo and Dream-1 results are added with the submission.
+Full-length runs on one commit of this folder, 2,400-step limit, GPU physics, cameras at 320 x 176:
+
+| Run | Steps | Score | What happened |
+|---|---|---|---|
+| Scripted demo (`yam_scripted`) | 1,239, ended by success | 1.0 | Four cards dealt, each within 2 mm of its box centre and 4 to 9 degrees off square. The next card in the pack moved 0.4 mm; the pack's block did not move. 62 s simulated, 200 s on an L40S |
+| Dream-1 (`dreamlabs/dream-1-beta`) | 2,400, the limit | 0.0 | No refusal. It reached the pack after about 1,500 steps, pushed the pack 7 mm and its top cards 2 to 3 cm back, and dealt no card. 364 s on an L40S |
+
+The 200-step runs are in the table under "Where the difficulty lies".
 
 One fixed layout (`object_jitter=0`); no seeds.
 
