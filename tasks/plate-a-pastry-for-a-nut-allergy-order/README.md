@@ -167,7 +167,7 @@ About US$125 in all. Nothing is used up by a trial.
 
 ## Runtime and seeds
 
-- The scripted demo plans 30.2 s (604 steps at 20 Hz), the last 3 s a wait.
+- The scripted demo plans 31.4 s (628 steps at 20 Hz), the last 3 s a wait.
 - The run limit is 2,400 steps (2 minutes), about four times the demo.
 - One fixed layout per run: `-E object_jitter=0`, so the seed does not change the start. The demo is open loop and
   deterministic.

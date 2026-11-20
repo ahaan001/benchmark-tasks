@@ -629,7 +629,8 @@ def _at(xy, z):
 
 
 JAWS_OVER = 0.008  # the jaws' lower edge above the board while they close on a croissant
-DROP_OVER = 0.012  # the croissant's underside above the plate's well when the jaws let it go
+DROP_OVER = 0.012  # the croissant's underside above the plate's well when the jaws let it go, or more:
+RIM_OVER = 0.010  # the handle passes at least this far above the plate's rim
 
 
 def serve_plan(which: str = "purple_tongs") -> list[Waypoint]:
@@ -642,7 +643,7 @@ def serve_plan(which: str = "purple_tongs") -> list[Waypoint]:
     drop = (PLATE_XY[0] - ahead, PLATE_XY[1] + SIDE * BELLY)
     hold, grasp = _fingers(HOLD_ANGLE), _fingers(GRASP_ANGLE, CARRY_FORCE)
     pick_z = BOARD[2] + JAWS_OVER + heels
-    drop_z = PLATE_T + DROP_OVER + JAWS_OVER + heels
+    drop_z = max(PLATE_T + DROP_OVER + JAWS_OVER + heels, PLATE_H + RIM_OVER + PAD_TIP - PADS_UNDER)
     back_z = grip_z + 0.002
     return [
         Waypoint(1.5, _at(take, TRAVEL), FINGER_OPEN, "over the tongs"),
@@ -661,70 +662,14 @@ def serve_plan(which: str = "purple_tongs") -> list[Waypoint]:
         Waypoint(1.5, _at(drop, drop_z), grasp, "down over the plate"),
         Waypoint(0.8, _at(drop, drop_z), hold, "let it go"),
         Waypoint(0.5, _at(drop, drop_z), hold, "settle"),
-        Waypoint(1.2, _at(drop, TRAVEL), hold, "up"),
+        Waypoint(1.0, _at(drop, drop_z + 0.025), hold, "up off it"),
+        Waypoint(1.0, _at(drop, TRAVEL), hold, "up"),
         Waypoint(2.5, _at(take, TRAVEL), hold, "back over where the tongs lay"),
         Waypoint(1.5, _at(take, back_z), hold, "lower the tongs"),
         Waypoint(0.8, _at(take, back_z), FINGER_OPEN, "let go"),
         Waypoint(1.2, _at(take, 0.150), FINGER_OPEN, "up and clear"),
         Waypoint(3.0, _at(take, 0.150), FINGER_OPEN, "wait"),
     ]
-
-
-def probe_plans() -> dict[str, list[Waypoint]]:
-    """A ten-second test, not a serve: the start of the serve played faster, up to the croissant lifted in the
-    jaws."""
-    take, grip_z, heels = _taking("purple_tongs")
-    pick = (ROW[0] - (JAW_X - GRIP_X), PLAIN_BOARD_XY[1] + SIDE * BELLY)
-    hold, grasp = _fingers(HOLD_ANGLE), _fingers(GRASP_ANGLE, CARRY_FORCE)
-    pick_z = BOARD[2] + JAWS_OVER + heels
-    return {PURPLE_ARM: [
-        Waypoint(1.2, _at(take, TRAVEL), FINGER_OPEN, "over the tongs"),
-        Waypoint(1.3, _at(take, grip_z), FINGER_OPEN, "down beside the handle"),
-        Waypoint(0.9, _at(take, grip_z), hold, "squeeze the handle"),
-        Waypoint(0.3, _at(take, grip_z), hold, "settle"),
-        Waypoint(1.1, _at(take, TRAVEL), hold, "lift the tongs"),
-        Waypoint(2.0, _at(pick, TRAVEL), hold, "over the plain croissant"),
-        Waypoint(0.3, _at(pick, TRAVEL), hold, "settle"),
-        Waypoint(1.5, _at(pick, pick_z), hold, "jaws down either side of it"),
-        Waypoint(0.2, _at(pick, pick_z), hold, "settle"),
-        Waypoint(0.7, _at(pick, pick_z), grasp, "squeeze the jaws onto it"),
-        Waypoint(0.5, _at(pick, pick_z + 0.020), grasp, "lift it"),
-    ]}
-
-
-def probe2_plans() -> dict[str, list[Waypoint]]:
-    """Two more ten-second tests. The purple board's arm takes the purple tongs, lifts them a little, lays them back
-    and lets go: the end of a serve. The other arm shuts the black tongs on the almond croissant, carries it to the
-    plate and lets it down there: the middle of a serve (it scores 0)."""
-    take, grip_z, heels = _taking("purple_tongs")
-    hold, grasp = _fingers(HOLD_ANGLE), _fingers(GRASP_ANGLE, CARRY_FORCE)
-    first = [
-        Waypoint(1.3, _at(take, TRAVEL), FINGER_OPEN, "over the tongs"),
-        Waypoint(1.4, _at(take, grip_z), FINGER_OPEN, "down beside the handle"),
-        Waypoint(1.0, _at(take, grip_z), hold, "squeeze the handle"),
-        Waypoint(0.5, _at(take, grip_z), hold, "settle"),
-        Waypoint(0.8, _at(take, grip_z + 0.040), hold, "lift the tongs"),
-        Waypoint(0.9, _at(take, grip_z + 0.002), hold, "lower the tongs"),
-        Waypoint(0.8, _at(take, grip_z + 0.002), FINGER_OPEN, "let go"),
-        Waypoint(1.3, _at(take, grip_z + 0.002), FINGER_OPEN, "wait for the other arm to pass"),
-        Waypoint(1.2, _at(take, 0.150), FINGER_OPEN, "up and clear"),
-        Waypoint(0.8, _at(take, 0.150), FINGER_OPEN, "wait"),
-    ]
-    take, grip_z, heels = _taking("black_tongs")
-    drop = (PLATE_XY[0] - (JAW_X - GRIP_X), PLATE_XY[1])
-    second = [
-        Waypoint(1.2, _at(take, TRAVEL), FINGER_OPEN, "over the black tongs"),
-        Waypoint(1.2, _at(take, grip_z), FINGER_OPEN, "down beside the handle"),
-        Waypoint(1.0, _at(take, grip_z), grasp, "squeeze: the jaws shut on the almond croissant"),
-        Waypoint(0.4, _at(take, grip_z), grasp, "settle"),
-        Waypoint(1.0, _at(take, grip_z + 0.050), grasp, "lift it"),
-        Waypoint(2.4, _at(drop, grip_z + 0.050), grasp, "across to the plate"),
-        Waypoint(1.0, _at(drop, PLATE_T + DROP_OVER + heels), grasp, "down over the plate"),
-        Waypoint(0.8, _at(drop, PLATE_T + DROP_OVER + heels), hold, "let it go"),
-        Waypoint(0.4, _at(drop, PLATE_T + DROP_OVER + heels), hold, "settle"),
-        Waypoint(0.6, _at(drop, TRAVEL), hold, "up"),
-    ]
-    return {PURPLE_ARM: first, BLACK_ARM: second}
 
 
 PURPLE_ARM = "right" if SIDE > 0 else "left"  # the arm on the purple board's side
@@ -734,12 +679,7 @@ BLACK_ARM = "left" if SIDE > 0 else "right"
 def demo():
     """The arm on the purple board's side serves the nearer plain croissant with the purple tongs and lays them back
     on the purple board. It plays open loop from the published start layout. With TASK_DEMO=black the other arm
-    does the same with the black-handled tongs instead, which scores 0. TASK_DEMO=probe tests the hold only."""
-    mode = os.environ.get("TASK_DEMO", "").strip().lower()
-    if mode == "black":
+    does the same with the black-handled tongs instead, which scores 0."""
+    if os.environ.get("TASK_DEMO", "").strip().lower() == "black":
         return {BLACK_ARM: serve_plan("black_tongs")}
-    if mode == "probe":
-        return probe_plans()
-    if mode == "probe2":
-        return probe2_plans()
     return {PURPLE_ARM: serve_plan("purple_tongs")}
