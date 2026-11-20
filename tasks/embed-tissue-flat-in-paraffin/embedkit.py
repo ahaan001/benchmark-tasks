@@ -1,11 +1,12 @@
-"""The embedding rules as bookkeeping, pure Python and NumPy: when the strip curls, when the wax sets, and the score. `write_pose` (holding the set
+"""The embedding rules as bookkeeping, pure Python and NumPy: how the strip lies, when the wax sets, and the score. `write_pose` (holding the set
 strip in its block) is the one call into Isaac Lab, imported lazily.
 
-The curl is a declared rule, not a shape change: the strip stays one flat rigid body for the physics; it counts as curled (and is drawn curled)
-while the forceps' tips have been off it for 0.3 s, until they press it again.
+The bow is physics, not a rule. The strip is two rigid halves on a sprung hinge across its middle (task.py): left alone it stands bowed on its two
+ends, and it lies flat only while something pushes its middle down against the spring. The rules read how it lies; they never flatten it.
+When `bow_set` or `set_` turns true, task.py locks the hinge where it is (`mechkit.lock`): the wax has set round the strip.
 
-Frames: the station frame with z up from the table. The mould's frame has its origin at the centre of its floor's underside; the piece's at its
-centre, its inked cut face towards -z; the forceps' at their closed tips.
+Frames: the station frame with z up from the table. The mould's frame has its origin at the centre of its floor's underside; the strip's at its
+centre when flat, its inked cut face towards -z, the hinge along x through the middle of its top face; the forceps' at their closed tips.
 """
 
 from __future__ import annotations
@@ -15,14 +16,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-FLOAT_AFTER = 0.3  # s without the tips on the strip before it curls in molten wax: a dab does not hold it
 SET_AFTER = 8.0  # s on the cold block for the bottom layer to set
+BOW_SETS_AFTER = 0.3  # s standing bowed with the mould over the cold block before the bottom sets round the bow
 FLAT_DEPTH = 0.001  # m: the whole inked face within the first 1 mm of facing (spread of its depth, and its lowest point off the floor)
 CENTRE = 0.003  # m from the mould's middle
 CLEAR = 0.03  # m from every fingertip point to the mould
 TILT_SPILL, LIFT_SPILL = 10.0, 0.01  # degrees and m: the mould tipped or lifted
-PRESS_ABOVE = 0.0003  # m: the tips' point on the strip's top face: no higher than this above it (in contact)
-PRESS_INTO = 0.001  # m: and no lower than this below it (pushed in, not resting on the floor beside it)
 
 
 @dataclass
@@ -30,11 +29,13 @@ class Geometry:
     plate_z: float
     cold: tuple  # x0, x1, y0, y1
     well: tuple  # x, y
+    well_in: float  # inside, square
     well_h: float
     mould_in: tuple  # inside x, y
     mould_h: float
     floor: float
     tissue: tuple  # x, y, z
+    fold: float  # rad: the hinge's travel from the rest bow (0) to flat
     start_mould: tuple
 
 
@@ -43,8 +44,9 @@ class Snapshot:
     mould_pos: np.ndarray
     mould_rot: np.ndarray
     mould_vel: np.ndarray
-    tissue_pos: np.ndarray
+    tissue_pos: np.ndarray  # the strip's near half: the hinge is on its top face
     tissue_rot: np.ndarray
+    fold: float  # rad: the hinge now, read from the simulator: 0 at the rest bow, `Geometry.fold` flat
     forceps_pos: np.ndarray
     forceps_rot: np.ndarray
     tips: np.ndarray  # fingertip points of both hands, (n, 3)
@@ -64,15 +66,35 @@ def tilt_deg(r: np.ndarray) -> float:
     return math.degrees(math.acos(max(-1.0, min(1.0, float(r[2, 2])))))
 
 
+def ink_corners(tissue: tuple, fold: float, q: float) -> np.ndarray:
+    """The inked face's corners in the strip's frame, four a half, with the hinge at `q`."""
+    sx, sy, sz = tissue
+    hinge = np.array([0.0, 0.0, sz / 2])
+    near = np.array([[a * sx / 2, y, -sz / 2] for a in (-1, 1) for y in (-sy / 2, 0.0)])
+    far = np.array([[a * sx / 2, y, -sz / 2] for a in (-1, 1) for y in (0.0, sy / 2)])
+    return np.vstack([near, hinge + (far - hinge) @ rot_x(math.degrees(q - fold)).T])
+
+
+def crown_height(tissue: tuple, tilt: float) -> float:
+    """How high the hinge stands above a level floor with each half tilted `tilt` rad, both ends down."""
+    return tissue[1] / 2 * math.sin(tilt) + tissue[2] * math.cos(tilt)
+
+
+def bow_pose(hinge_xy, floor_z: float, tilt: float, tissue: tuple) -> tuple[np.ndarray, np.ndarray]:
+    """The strip's pose (position, rotation) standing on a level floor at `floor_z`, each half tilted `tilt` rad, its hinge over `hinge_xy`."""
+    rot = rot_x(math.degrees(tilt))  # the near half's far end down
+    hinge = np.array([hinge_xy[0], hinge_xy[1], floor_z + crown_height(tissue, tilt)])
+    return hinge - rot @ np.array([0.0, 0.0, tissue[2] / 2]), rot
+
+
 class Rules:
     def __init__(self, g: Geometry, dt: float):
         self.g, self.dt = g, dt
         self.reset()
 
     def reset(self) -> None:
-        self.unpressed = FLOAT_AFTER  # a strip just dropped in has not been pressed: it starts curled
-        self.floating = True  # curled
-        self.curl_set = False  # curled while on the cold block: the bottom sets round the curl
+        self.bowed_cold = 0.0  # s the strip has stood bowed with the mould over the cold block
+        self.bow_set = False  # the bottom has set round the bow: pressing no longer helps
         self.cold_time = 0.0
         self.set_ = False
         self.flat = self.centred = False
@@ -84,12 +106,18 @@ class Rules:
     def in_mould(self, snap: Snapshot, p) -> np.ndarray:
         return (np.atleast_2d(p) - snap.mould_pos) @ snap.mould_rot
 
-    def pressed(self, snap: Snapshot) -> bool:
-        sx, sy, sz = self.g.tissue
-        rel = snap.tissue_rot.T @ (self.tip_point(snap) - snap.tissue_pos)
-        on_top = sz / 2 - PRESS_INTO <= rel[2] <= sz / 2 + PRESS_ABOVE
-        middle_or_curl = -sy / 6 <= rel[1] <= sy / 2  # the middle third or the curling (+y) end, not the end that lies flat anyway
-        return bool(abs(rel[0]) <= sx / 2 and middle_or_curl and on_top)
+    def hinge(self, snap: Snapshot) -> np.ndarray:
+        """The middle of the strip's fold line, on its top face: the crown of the bow."""
+        return snap.tissue_pos + snap.tissue_rot @ np.array([0.0, 0.0, self.g.tissue[2] / 2])
+
+    def ink_depth(self, snap: Snapshot) -> np.ndarray:
+        """How far each corner of the inked face stands off the mould's floor."""
+        corners = snap.tissue_pos + ink_corners(self.g.tissue, self.g.fold, snap.fold) @ snap.tissue_rot.T
+        return self.in_mould(snap, corners)[:, 2] - self.g.floor
+
+    def lies_flat(self, snap: Snapshot) -> bool:
+        depth = self.ink_depth(snap)
+        return bool(float(depth.max() - depth.min()) <= FLAT_DEPTH and float(depth.min()) <= FLAT_DEPTH)
 
     def tip_point(self, snap: Snapshot) -> np.ndarray:
         """The lowest corner of the closed tips' end face (1.5 mm by 2 mm): where a tilted forceps touches."""
@@ -98,7 +126,7 @@ class Rules:
         return pts[int(np.argmin(pts[:, 2]))]
 
     def over_cold(self, snap: Snapshot) -> bool:
-        """Any part of the mould's floor over the cold block, the mould resting: the bottom starts to cool, and a curl then sets."""
+        """Any part of the mould's floor over the cold block, the mould resting: the bottom starts to cool, and a bow then sets."""
         x0, x1, y0, y1 = self.g.cold
         mx, my, mz = snap.mould_pos
         hx, hy = self.g.mould_in[0] / 2, self.g.mould_in[1] / 2
@@ -111,7 +139,7 @@ class Rules:
         return x0 + hx <= mx <= x1 - hx and y0 + hy <= my <= y1 - hy and abs(mz - self.g.plate_z) < 0.004
 
     def piece_in_mould(self, snap: Snapshot) -> tuple[np.ndarray, np.ndarray]:
-        return self.in_mould(snap, snap.tissue_pos)[0], snap.mould_rot.T @ snap.tissue_rot
+        return self.in_mould(snap, self.hinge(snap))[0], snap.mould_rot.T @ snap.tissue_rot
 
     def fail(self, why: str) -> None:
         if not self.failed:
@@ -133,37 +161,25 @@ class Rules:
             self.fail("the piece left the mould")
         if self.set_:
             return snap.mould_pos + snap.mould_rot @ self.rel[0], snap.mould_rot @ self.rel[1]
-        on_cold = self.on_cold(snap)
-        if self.pressed(snap) and not self.curl_set:
-            self.unpressed, self.floating = 0.0, False
-        else:
-            self.unpressed += self.dt
-            if self.unpressed >= FLOAT_AFTER:
-                self.floating = True
-        if self.floating and self.over_cold(snap):
-            self.curl_set = True
-        self.cold_time = self.cold_time + self.dt if on_cold else 0.0
+        flat_now = self.lies_flat(snap)
+        self.bowed_cold = self.bowed_cold + self.dt if not flat_now and self.over_cold(snap) else 0.0
+        if self.bowed_cold >= BOW_SETS_AFTER:
+            self.bow_set = True
+        self.cold_time = self.cold_time + self.dt if self.on_cold(snap) else 0.0
         if self.cold_time >= SET_AFTER:
             rel_pos, rel_rot = snap.mould_rot.T @ (snap.tissue_pos - snap.mould_pos), snap.mould_rot.T @ snap.tissue_rot
             self.rel = (rel_pos, rel_rot)
-            depth = self.ink_heights(rel_pos, rel_rot) - g.floor
-            lies_flat = float(depth.max() - depth.min()) <= FLAT_DEPTH and float(depth.min()) <= FLAT_DEPTH
-            self.flat = lies_flat and not self.floating  # a curled strip sets curled
-            self.centred = math.hypot(rel_pos[0], rel_pos[1]) <= CENTRE
+            self.flat = flat_now and not self.bow_set  # a bowed strip sets bowed
+            self.centred = math.hypot(tp[0], tp[1]) <= CENTRE
             self.set_ = True
             return snap.mould_pos + snap.mould_rot @ rel_pos, snap.mould_rot @ rel_rot
         return None
 
-    def ink_heights(self, pos: np.ndarray, r: np.ndarray) -> np.ndarray:
-        """Heights in the mould frame of the inked face's four corners, for the strip at `pos`, `r` in that frame."""
-        sx, sy, sz = self.g.tissue
-        corners = np.array([[a * sx / 2, b * sy / 2, -sz / 2] for a in (-1, 1) for b in (-1, 1)])
-        return pos[2] + (corners @ r.T)[:, 2]
-
     def forceps_in_well(self, snap: Snapshot) -> bool:
+        """The closed tips inside the well's square tube, below its top."""
         wx, wy = self.g.well
         p = snap.forceps_pos
-        return math.hypot(p[0] - wx, p[1] - wy) < 0.008 and p[2] < self.g.plate_z + self.g.well_h
+        return abs(p[0] - wx) < self.g.well_in / 2 and abs(p[1] - wy) < self.g.well_in / 2 and p[2] < self.g.plate_z + self.g.well_h
 
     def hands_clear(self, snap: Snapshot) -> bool:
         local = self.in_mould(snap, snap.tips)
@@ -178,10 +194,12 @@ class Rules:
 
     def report(self, snap: Snapshot) -> dict:
         tp, tr = self.piece_in_mould(snap)
-        rel = snap.tissue_rot.T @ (self.tip_point(snap) - snap.tissue_pos)
-        return {"tip in strip mm": np.round(rel * 1000, 1).tolist(), "mould": np.round(snap.mould_pos * 1000, 1).tolist(), "pressed": self.pressed(snap), "curled": self.floating, "curl set": self.curl_set, "cold s": round(self.cold_time, 2), "set": self.set_,
-                "flat": self.flat, "centred": self.centred, "piece mm": np.round(tp * 1000, 1).tolist(), "piece tilt": round(tilt_deg(tr), 1),
-                "forceps in well": self.forceps_in_well(snap), "clear": self.hands_clear(snap), "failed": self.why or False}
+        depth = self.ink_depth(snap)
+        return {"tip from crown mm": np.round((self.tip_point(snap) - self.hinge(snap)) * 1000, 1).tolist(), "mould": np.round(snap.mould_pos * 1000, 1).tolist(),
+                "mould yaw": round(math.degrees(math.atan2(snap.mould_rot[1, 0], snap.mould_rot[0, 0])), 1), "fold deg": round(math.degrees(snap.fold), 1), "ink off floor mm": [round(float(depth.min()) * 1000, 2), round(float(depth.max()) * 1000, 2)],
+                "lies flat": self.lies_flat(snap), "bow set": self.bow_set, "cold s": round(self.cold_time, 2), "set": self.set_, "flat": self.flat, "centred": self.centred,
+                "crown mm": np.round(tp * 1000, 1).tolist(), "near half tilt": round(tilt_deg(tr), 1), "forceps in well": self.forceps_in_well(snap), "clear": self.hands_clear(snap),
+                "failed": self.why or False}
 
 
 def score(set_: bool, flat: bool, centred: bool, clean: bool, failed: bool) -> float:
@@ -208,15 +226,29 @@ def quat_xyzw(r: np.ndarray) -> np.ndarray:
     return q / np.linalg.norm(q)
 
 
-def write_pose(environment, name: str, pos, rot) -> None:
-    """Put a free part's root at a pose (station frame, z from the floor), at rest: the technique of the accepted tasks bayonet-mate (partkit
-    `write_pose`) and casement-stay-last-hole (mechkit `_write_pose`)."""
+def quat_matrix(q_xyzw) -> np.ndarray:
+    x, y, z, w = (float(v) for v in q_xyzw)
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                     [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                     [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
+
+
+def write_pose(environment, name: str, pos, rot, body: str | None = None) -> None:
+    """Put a free part at a pose (station frame, z from the floor), at rest: the technique of the accepted tasks bayonet-mate (partkit
+    `write_pose`) and casement-stay-last-hole (mechkit `_write_pose`). For a jointed part the pose is that of `body`; its joints stay as they are."""
     import torch
 
     base = environment.unwrapped
     asset = base.scene[name]
     origin = getattr(base.scene.env_origins, "torch", base.scene.env_origins)[0]
-    q = quat_xyzw(np.asarray(rot, float))
+    pos, rot = np.asarray(pos, float), np.asarray(rot, float)
+    names = list(getattr(asset, "body_names", ()))
+    if body is not None and names and names[0] != body:  # the root link is another body: carry it with `body`
+        poses = getattr(asset.data.body_link_pose_w, "torch", asset.data.body_link_pose_w)[0].detach().cpu().numpy().astype(float)
+        root, held = poses[0], poses[names.index(body)]
+        turn = rot @ quat_matrix(held[3:7]).T
+        pos, rot = pos + turn @ (root[:3] - held[:3]), turn @ quat_matrix(root[3:7])
+    q = quat_xyzw(rot)
     pose = torch.tensor([[*(float(v) for v in pos), *(float(v) for v in q)]], dtype=origin.dtype, device=origin.device)
     pose[:, :3] += origin
     asset.write_root_pose_to_sim_index(root_pose=pose)
