@@ -370,6 +370,8 @@ IN_OPENING = 0.0010  # an edge deeper than this has its nut between the lips
 KEEP_IN, KEEP_DOWN = 0.0004, 0.0010  # the foot is only brought level while the middle of each nut's underside is this far down, and is let down to keep it there
 PUSH_LEAD, PUSH_STEP = 0.004, 0.0002  # the hand's command goes outward at 4 mm a second, never further ahead of the nuts than this
 LEAD = 0.004  # the furthest a lowering command runs ahead of what the hand holds: the arm follows late and in jumps of 2 to 3 mm
+HOVER = 0.002  # the blade's tip is lined up with a socket this far above the screw's head
+BLADE_LEAD = 0.008  # and how far the command runs ahead of the blade on its way down: reaching over the bar the arm follows later still
 SLIDE_LEAD = 0.006  # and ahead of a foot that is slid along the slot
 TRIES, LAST_TRY_S = 6, 85.0  # tries at the slot, none begun later than this: the screws and the driver take 75 s
 STROKE_FROM, STROKE_TO = 138.0, -55.0  # the driving hand's yaw window over the screws
@@ -533,13 +535,21 @@ def demo_script(ctx):
         """An arm's command minus where its hand is, seen from its joints: its lag, its droop under a load and its push."""
         return ik.tcp_pose(arm.q, arm.base)[0] - arm.tcp()
 
-    def turn_hand(axis, deg: float, about=None) -> None:
-        """One step: turn the left hand, and the bracket in it, about a line along `axis` through `about` (its own TCP if none)."""
-        pos, rot = ik.tcp_pose(left.q, left.base)
+    def turn_hand(axis, deg: float, about=None, arm=None) -> None:
+        """One step: turn a hand (the left if none is named), and what it holds, about a line along `axis` through `about` (its own
+        TCP if none)."""
+        arm = left if arm is None else arm
+        pos, rot = ik.tcp_pose(arm.q, arm.base)
         centre = pos if about is None else np.asarray(about, float)
         turn = axis_angle_matrix(np.asarray(axis, float), math.radians(deg))
-        left._solve(centre + turn @ (pos - centre), turn @ rot)
-        left.grip = d._as_grip(turn @ rot)
+        arm._solve(centre + turn @ (pos - centre), turn @ rot)
+        arm.grip = d._as_grip(turn @ rot)
+
+    def hold_still(arm) -> None:
+        """An arm's command put where the arm is: a command that was wound on ahead leaves it nothing to creep to."""
+        arm.q = np.asarray(ctx.observed(arm.side)[:6], float).copy()
+        arm.cmd = np.r_[arm.q, arm.cmd[6]]
+        arm.grip = d._as_grip(ik.tcp_pose(arm.q, arm.base)[1])
 
     def tilt(deg: float) -> None:
         """About a line along the bar through the middle of the two nuts' undersides: the camera end up or down, the nuts where they are."""
@@ -764,37 +774,75 @@ def demo_script(ctx):
         yield from right.move(right.at() + [0.0, 0.0, g.HOLE_DEPTH + 0.015], t=T(1.5), label="lift the driver out of its block")
         report(env, "driver taken: ")
 
+    def over_socket(k: int, steps: int = 70):
+        """The blade's hex turned to the socket's and its tip brought over the socket's axis, both by what is seen and a little a step,
+        no command wound more than 2 degrees or 4 mm ahead of what it moves: the screw is stiff in its hole and will not come round to
+        the blade, and the socket leaves a full hex 0.06 mm either side. Ends with the arm's command put where the arm is."""
+        at, wound = wrap60(blade_yaw() - socket(k)[1]), 0.0
+        xy0, sent, good = tip()[:2].copy(), np.zeros(2), 0
+        for _ in range(steps):
+            off = wrap60(blade_yaw() - socket(k)[1])
+            miss = (socket(k)[0] - tip())[:2]
+            good = good + 1 if abs(off) <= 0.7 and np.linalg.norm(miss) <= 0.0004 else 0
+            if good >= 2:
+                break
+            if abs(off) > 0.4:
+                step = -float(np.clip(0.3 * off, -0.3, 0.3))
+                if abs(wound + step - (off - at)) <= 2.0:
+                    turn_hand((0.0, 0.0, 1.0), step, arm=right)
+                    wound += step
+            if np.linalg.norm(miss) > 0.0002:
+                step = np.clip(0.3 * miss, -0.0004, 0.0004)
+                if np.linalg.norm(sent + step - (tip()[:2] - xy0)) <= 0.004:
+                    nudge(right, (float(step[0]), float(step[1]), 0.0))
+                    sent += step
+            yield
+        hold_still(right)
+        yield from right.wait(0.15)
+
     def set_blade(k: int, hand: float):
         """The blade over screw k's socket with the hand turned to `hand`, its hex lined up with the socket's, then down into it. Returns
         whether it went in. The hand is turned there by the angle itself, never by the shortest way round: its wrist has one window."""
         head, _ = socket(k)
-        above = head + [0.0, 0.0, 0.008 + g.TIP_TO_TCP]
+        above = head + [0.0, 0.0, g.SOCKET_DEPTH + HOVER + g.TIP_TO_TCP]
         if np.linalg.norm(right.at() - above) > 0.004:
             yield from right.move(above, t=T(1.5) if np.linalg.norm(right.at() - above) > 0.03 else 0.4, label=f"the blade over screw {NAMES[k]}")
         back = hand - hand_yaw()
         if abs(back) > 0.5:
             yield from right.turn(back, t=max(0.3, abs(back) / (2.0 * TURN_RATE)), label="turn the hand back in the air")
-        for _ in range(2):  # the hex is turned to the socket's: the screw is stiff in its hole and will not come round to the blade
-            off = wrap60(blade_yaw() - socket(k)[1])
-            if abs(off) > 0.8:
-                yield from right.turn(-off, t=0.3, label="line the hex up with the socket")
-        yield from right.servo(socket(k)[0] + [0.0, 0.0, 0.008], tol=0.0005, timeout=2.5, gain=0.25, read=tip, label=f"the blade over screw {NAMES[k]}")
-        for _ in range(2):  # the arm creeps on after a servo stops: wait, look again, and put the command over by what is left
-            yield from right.wait(0.3)
-            off = (socket(k)[0] - tip())[:2]
-            if np.linalg.norm(off) <= 0.0005:
+        yield from right.servo(socket(k)[0] + [0.0, 0.0, g.SOCKET_DEPTH + HOVER], tol=0.0006, timeout=2.0, gain=0.25, read=tip, label=f"the blade over screw {NAMES[k]}")
+        hold_still(right)
+        yield from over_socket(k)
+        depth = lambda: float(tip()[2] - socket(k)[0][2])  # noqa: E731
+        xy0, sent, lead, quiet = tip()[:2].copy(), np.zeros(2), 0.0, 0
+        for _ in range(200):  # down, the tip kept toward the socket's axis: on the head's top it is drawn across to the socket, in its mouth the chamfer is helped
+            h = depth()
+            if h <= 0.0008:
                 break
-            nudge(right, (float(off[0]), float(off[1]), 0.0))
-        yield from right.wait(0.2)
-        yield from ease_down(right, lambda: float(tip()[2] - socket(k)[0][2]), 0.0008, steps=120)
+            miss = (socket(k)[0] - tip())[:2]
+            if np.linalg.norm(miss) > 0.0002:
+                step = np.clip(0.3 * miss, -0.0003, 0.0003)
+                if np.linalg.norm(sent + step - (tip()[:2] - xy0)) <= 0.003:
+                    nudge(right, (float(step[0]), float(step[1]), 0.0))
+                    sent += step
+            if lead < BLADE_LEAD:
+                nudge(right, (0.0, 0.0, -0.00025))
+                lead += 0.00025
+            yield
+            drop = h - depth()
+            lead = max(lead - max(drop, 0.0), 0.0)
+            quiet = quiet + 1 if drop < 0.00003 and lead >= BLADE_LEAD - 1e-9 else 0
+            if quiet >= 30:
+                break
+        hold_still(right)
         right.trim = np.zeros(3)
         yield from right.wait(0.15)
         head = socket(k)
-        print(f"[tslot] blade at screw {NAMES[k]}: tip {1000 * float(tip()[2] - head[0][2]):.2f} mm above the socket's floor, {1000 * float(np.linalg.norm((tip() - head[0])[:2])):.2f} mm off its axis, "
-              f"hex {wrap60(blade_yaw() - head[1]):+.1f} degrees from the socket's", flush=True)
-        return float(tip()[2] - head[0][2]) <= 0.0015
+        print(f"[tslot] t {ctx.t:5.1f} blade at screw {NAMES[k]}: tip {1000 * depth():.2f} mm above the socket's floor, {1000 * float(np.linalg.norm((tip() - head[0])[:2])):.2f} mm off its axis, "
+              f"hex {wrap60(blade_yaw() - head[1]):+.1f} degrees from the socket's; the command had run {lead * 1000:.1f} mm ahead", flush=True)
+        return depth() <= 0.0015
 
-    def stroke(k: int, strokes: int = 8):
+    def stroke(k: int, strokes: int = 12):
         """Screw k in clockwise strokes of the wrist until its thread is wound tight, the blade lifted out and turned back between strokes."""
         for n in range(strokes):
             _, phase = socket(k)
@@ -803,7 +851,7 @@ def demo_script(ctx):
             seated = yield from set_blade(k, start)
             if not seated:
                 print(f"[tslot] the blade is not in screw {NAMES[k]}'s socket: lift and try again", flush=True)
-                yield from right.move(right.at() + [0.0, 0.0, 0.010], t=0.4, label="lift the blade")
+                yield from right.move(right.at() + [0.0, 0.0, 0.004], t=0.3, label="lift the blade")
                 continue
             sweep = start - STROKE_TO  # as far as the wrist goes: the next stroke starts where the hex meets the socket again
             before = ctx.deg("bracket", f"screw_{NAMES[k]}")

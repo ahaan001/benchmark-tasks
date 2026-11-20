@@ -26,7 +26,7 @@ SIDE_Y = (-0.08, 0.18)  # centre lines of the two side bars, which run along x b
 FRAME_Y = (SIDE_Y[0] - BAR / 2, SIDE_Y[1] + BAR / 2)
 SIDE_SPAN = (CROSS_X[0] + BAR / 2, CROSS_X[1] - BAR / 2)
 MARKED_Y = SIDE_Y[0]  # the right side bar carries the line
-LINE_X, LINE_W = 0.24, 0.003
+LINE_X, LINE_W = 0.24, 0.006
 CORNER = (0.040, 0.006, 0.036)  # 80/20 40-4302 inside corner bracket: leg length, thickness, width
 
 # -- the camera bracket (our design; drawing and model in the task folder) ---------------------------------------------------------------
