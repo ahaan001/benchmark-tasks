@@ -79,10 +79,11 @@ class World:
         origin, yaw = task.bracket_start()
         self.bracket = [origin + UP, g.rot_z(yaw)]
         self.screw, self.nut, self.travel = [0.0, 0.0], [math.radians(v) for v in (task.ASKEW_DEG if task.START == "askew" else 0.0, 0.0)], [0.0, 0.0]
-        self.driver = [np.array([task.BLOCK_XY[0], task.BLOCK_XY[1], g.DRIVER_START[2]]) + UP, np.eye(3)]
+        self.driver = [np.array([task.BLOCK_XY[0], task.BLOCK_XY[1], g.DRIVER_START[2]]) + UP, g.rot_z(task.DRIVER_YAW)]
         self.held = {}  # name -> (side, position in the hand's frame, rotation in the hand's frame)
         self.in_socket, self.last_blade = None, None
         self.tipped, self.notes = False, []
+        self._screw_was = [0.0, 0.0]
 
     def note(self, text):
         if text not in self.notes:
@@ -202,8 +203,7 @@ class World:
             head = pos + rot @ (g.SCREWS[k] + [0.0, 0.0, g.SOCKET_FLOOR])
             off = float(np.linalg.norm(np.asarray(xy) - head[:2]))
             if off <= g.HEAD_D / 2:
-                phase = (yaw_of(self.driver[1]) - (yaw_of(rot) + math.degrees(self.screw[k])) + 30.0) % 60.0 - 30.0
-                lined = off <= 0.0004 and abs(phase) <= 2.0
+                lined = off <= 0.0007  # the tip's chamfer takes up the rest
                 already = self.in_socket == k
                 return (head[2] if lined or already else head[2] + g.SOCKET_DEPTH), k if lined or already else None
         b = np.asarray(xy) - np.asarray(task.BLOCK_XY)
@@ -225,7 +225,8 @@ class World:
         engaged = k is not None and pos[2] <= floor + g.SOCKET_DEPTH - 0.001
         if engaged and self.in_socket == k:  # the blade is in the socket: the screw turns with it
             self.screw[k] += math.radians((yaw_of(rot) - before + 180.0) % 360.0 - 180.0)
-        if engaged and self.in_socket != k:
+        if engaged and self.in_socket != k:  # going in, the chamfered tip brings the free screw round to the blade's hex
+            self.screw[k] += math.radians((yaw_of(rot) - (yaw_of(self.bracket[1]) + math.degrees(self.screw[k])) + 30.0) % 60.0 - 30.0)
             self.note(f"the blade is in screw {task.NAMES[k]}'s socket")
         self.in_socket = k if engaged else None
 
@@ -234,7 +235,7 @@ class World:
         pos, rot = self.bracket
         seated = self.over_marked_bar(pos) and pos[2] - TOP <= g.BAR + 0.0008
         for k in range(2):
-            turned = getattr(self, "_screw_was", [0.0, 0.0])[k] - self.screw[k]  # clockwise positive
+            turned = self._screw_was[k] - self.screw[k]  # clockwise positive
             if not turned:
                 continue
             cw = self.nut_turn(k) - math.degrees(turned)  # where the nut was before this step's turn

@@ -76,7 +76,7 @@ BLOCK_XY = (0.20, -0.25)
 HOLE, HOLE_DEPTH = 0.007, 0.035
 SUPPORT_H = 0.035  # EVA foam, so that the nuts and the camera hang free
 START_XY, START_YAW = (0.33, 0.29), 90.0  # the foot's centre at the start, arm pointing toward the robot
-STRIPS = (((0.0, 0.014), (0.080, 0.012)), ((0.0, -0.014), (0.080, 0.012)), ((0.0, 0.075), (0.020, 0.030)))  # (centre, size) in the bracket's frame: two under the foot, one under the arm
+STRIPS = (((0.0, 0.014), (0.080, 0.012)), ((0.0, -0.014), (0.080, 0.012)), ((-0.002, 0.185), (0.014, 0.024)))  # (centre, size) in the bracket's frame: two under the foot, one under the arm's end, beyond the centre of mass
 MOUNT_XY, MOUNT_YAW = (LINE_X, MARKED_Y), 0.0  # where the foot's centre belongs, arm pointing left over the inside of the frame
 
 LOOKS_RGB = {"aluminium": (0.78, 0.79, 0.80), "slot": (0.30, 0.31, 0.33), "zinc": (0.72, 0.73, 0.75), "petg": (0.56, 0.58, 0.60), "black": (0.05, 0.05, 0.06),

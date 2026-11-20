@@ -49,6 +49,7 @@ START = os.environ.get("TSLOT_START", "")
 if START not in ("", "mounted", "askew"):
     raise ValueError(f"TSLOT_START={START!r}")
 BLOCK_XY = (0.20, -0.17) if START == "mounted" else g.BLOCK_XY
+DRIVER_YAW = 75.0 if START == "mounted" else 0.0  # in the mounted test the driver stands turned, so that the hand takes it near the top of its stroke
 ASKEW_DEG, ASKEW_UP = 20.0, 0.003
 TRAVEL_ARMATURE = 0.2  # kg in the slide's own direction: lets the solver carry the thread's spring through the light nut
 
@@ -188,7 +189,7 @@ def driver():
     cols = [m.col_hull("c_blade", blade)] + [m.col_box(f"c_{name}", size, c) for name, c, size, _ in g.driver_boxes()]
     tip = np.array([BLOCK_XY[0], BLOCK_XY[1], g.DRIVER_START[2]])
     return m.free("driver", tuple(tip + UP + [0.0, 0.0, 0.0005]), parts, cols, LOOKS, mass=g.DRIVER_MASS, friction=(1.0, 0.9), torsional_patch=0.015,
-                  com=(0.0, 0.0, g.DRIVER_COM))
+                  yaw_deg=DRIVER_YAW, com=(0.0, 0.0, g.DRIVER_COM))
 
 
 FRAME, SUPPORTS, BLOCK, BRACKET, DRIVER = frame(), supports(), block(), bracket(), driver()
@@ -524,13 +525,15 @@ def demo_script(ctx):
 
     def take_driver():
         over = tip() + [0.0, 0.0, g.TIP_TO_TCP]  # read once
-        yield from right.move(over + [0.0, 0.0, 0.05], grip=d.down(0.0), finger=-(g.NECK[1] / 2 + 0.012), t=T(2.5), label="over the driver")
+        across = (blade_yaw() + 90.0) % 180.0 - 90.0  # the fingers close across the neck's two flat sides, whichever way the driver stands
+        yield from right.move(over + [0.0, 0.0, 0.05], grip=d.down(across), finger=-(g.NECK[1] / 2 + 0.012), t=T(2.5), label="over the driver")
         yield from right.servo(over + [0.0, 0.0, 0.05], tol=0.003, timeout=1.5, label="over the driver")
         yield from right.move(over, t=T(1.2), label="down round the driver's neck")
         yield from right.servo(over, tol=0.002, timeout=1.0, label="down round the driver's neck")
         yield from right.close(g.NECK[1], 20.0, label="take the driver")
         yield from right.wait(0.2)
         yield from right.move(right.at() + [0.0, 0.0, g.HOLE_DEPTH + 0.015], t=T(1.5), label="lift the driver out of its block")
+        report(env, "driver taken: ")
 
     def set_blade(k: int, hand: float):
         """The blade over screw k's socket with the hand turned to `hand`, its hex lined up with the socket's, then down into it. Returns
@@ -542,12 +545,12 @@ def demo_script(ctx):
         back = hand - hand_yaw()
         if abs(back) > 0.5:
             yield from right.turn(back, t=max(0.3, abs(back) / (2.0 * TURN_RATE)), label="turn the hand back in the air")
-        for _ in range(3):
+        for _ in range(3):  # the tip's chamfer takes up 0.7 mm and brings a free screw round to the blade: near is near enough
             off = wrap60(blade_yaw() - socket(k)[1])
-            if abs(off) > 0.8:
+            if abs(off) > 8.0:
                 yield from right.turn(-off, t=0.3, label="line the hex up with the socket")
-            ok = yield from right.servo(socket(k)[0] + [0.0, 0.0, 0.008], tol=0.0003, timeout=2.0, gain=0.3, read=tip, label=f"the blade over screw {NAMES[k]}")
-            if ok and abs(wrap60(blade_yaw() - socket(k)[1])) <= 1.5:
+            ok = yield from right.servo(socket(k)[0] + [0.0, 0.0, 0.008], tol=0.0006, timeout=T(2.0), gain=0.3, read=tip, label=f"the blade over screw {NAMES[k]}")
+            if ok:
                 break
         lead = 0.0
         for _ in range(60):
@@ -559,7 +562,10 @@ def demo_script(ctx):
             lead = lead + 0.0005 - max(depth - float(tip()[2] - socket(k)[0][2]), 0.0)
         right.trim = np.zeros(3)
         yield from right.wait(0.15)
-        return float(tip()[2] - socket(k)[0][2]) <= 0.0015
+        head = socket(k)
+        print(f"[tslot] blade at screw {NAMES[k]}: tip {1000 * float(tip()[2] - head[0][2]):.2f} mm above the socket's floor, {1000 * float(np.linalg.norm((tip() - head[0])[:2])):.2f} mm off its axis, "
+              f"hex {wrap60(blade_yaw() - head[1]):+.1f} degrees from the socket's", flush=True)
+        return float(tip()[2] - head[0][2]) <= 0.0015
 
     def stroke(k: int, strokes: int = 8):
         """Screw k in clockwise strokes of the wrist until its thread is wound tight, the blade lifted out and turned back between strokes."""
