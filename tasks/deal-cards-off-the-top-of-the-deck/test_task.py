@@ -241,8 +241,8 @@ class StandIn:
                 self.rot[card] = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
                 front = np.array([edge + over * c, self.pos[card][1], FELT])
                 self.pos[card] = front - self.rot[card][:, 0] * L.CARD_L / 2 + self.rot[card][:, 2] * L.CARD_T / 2
-        elif d.phase in ("draw", "slide"):
-            key = (card, d.phase)
+        elif d.phase in ("draw", "slide", "place"):
+            key = (card, d.phase == "draw")
             self.offset.setdefault(key, self.pos[card][:2] - tip[:2])
             self.pos[card][:2] = tip[:2] + self.offset[key]
             if self.pos[card][0] - L.CARD_L / 2 > edge - 0.002:
@@ -280,7 +280,7 @@ def play(mode: str):
 def demo_on_the_stand_in():
     value, steps, ik_error, margin, askew = play("full")
     assert value == 1.0, value
-    assert steps < L.RUN_LIMIT / 2 and ik_error < 5e-4 and margin > 10.0 and askew < 4.0, (steps, ik_error, margin, askew)
+    assert steps < 0.75 * L.RUN_LIMIT and ik_error < 5e-4 and margin > 10.0 and askew < 4.0, (steps, ik_error, margin, askew)
     print(f"     stand-in: full demo {steps} steps, IK error {1000 * ik_error:.3f} mm, joint margin {margin:.1f} deg, "
           f"cards left within {askew:.1f} deg of square")
 

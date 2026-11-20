@@ -1,17 +1,18 @@
 """deal_demo: the closed-loop scripted demo that yam_scripted runs for this task. NumPy only.
 
 It reads the cards' poses from the simulator each control step (a scripted demo may) and commands joint targets.
-One card at a time, with the fingers 4 cm apart and pointing straight down:
+One card at a time, hands pointing straight down:
 
-1. Both fingertips come down on the back half of the top card and push it forward until most of it hangs over the
-   pack's front edge, the tips stopping short of the edge so they never lever on the overhang.
+1. Fingers 4 cm apart: both fingertips come down on the back half of the top card and push it forward until most of
+   it hangs over the pack's front edge, the tips stopping short of the edge so they never lever on the overhang.
 2. The tips lift. The card tips over the edge and comes to rest leaning, its front edge on the felt.
 3. The tips come down on the card near that front edge and draw it straight along its own length until its back end
-   has left the pack and it lies flat on the felt. Drawn by its front end it follows like a trailer; pulled sideways
-   from there it would swing round.
-4. The tips move to the middle of the card and slide it across the felt to its box. Carried by its middle it keeps
-   its heading.
-5. The tips lift straight up.
+   is 3 cm past the pack and it lies flat on the felt.
+4. The tips lift and the fingers close into one fingertip. It comes down on the card 2 cm from its middle, on the
+   side the card has to go, and slides it straight to its box. Led from in front of its middle a card follows like a
+   trailer and keeps its heading; pushed from behind its middle, or carried under two fingertips that do not press
+   alike, it swings round.
+5. The fingertip lifts straight up.
 
 ``DEAL_MODE`` (environment variable): ``full`` (four cards), ``one`` (one card to box 2), and two poor deals to
 check the scorer. ``light``: the first touch stops 1 mm above the card, so the push carries nothing; the demo then
@@ -39,21 +40,16 @@ HALF_GAP = 0.020  # each fingertip this far from the card's centre line
 GRIP = (HALF_GAP - 0.0015) / 0.047  # share of fully open: the tips' inner faces are 47 mm from the centre when open
 PRESS = -0.001 if MODE == "light" else 0.0007  # the tips are commanded this far into the surface they ride on
 PRESS_DRAW = 0.0005  # second touch, on the leaning card
-PRESS_FELT = 0.0008  # third touch, on the card lying on the felt
-CLEAR_PACK = 0.005  # the card is drawn until its back edge is this far past the pack
+PRESS_FELT = 0.0008  # once the card lies on the felt
+CLEAR_PACK = 0.03  # the card is drawn until its back edge is this far past the pack
+LEAD = 0.020  # the one fingertip that carries a card rides this far ahead of the card's middle
 BACK = 0.032  # the tips land this far behind the card's centre
 SHORT = 0.008  # ... and stop this far short of the pack's front edge
 FRONT = 0.015  # second touch: this far behind the card's front edge
 FREE, SLOW, PUSH, DRAG = 0.30, 0.02, 0.04, 0.06  # m/s
 HOVER = 0.03
-TURN = math.radians(40.0)  # rad/s: how fast the hand turns about the vertical
-MAX_TURN = math.radians(60.0)
+ONE_TIP = ("rise", "over the lead", "touch the lead", "slide", "place", "settle", "lift")  # fingers closed
 DOWN = ik.matrix_to_quat_xyzw(grip_rotation(0.0))
-
-
-def heading(axis) -> float:
-    """A card's turn about the vertical, from its long axis (taken as pointing away from the robot)."""
-    return math.atan2(float(axis[1]), float(axis[0]))
 
 
 def jobs(cards: list[str]) -> list[tuple[str, str, tuple[float, float]]]:
@@ -65,17 +61,19 @@ def jobs(cards: list[str]) -> list[tuple[str, str, tuple[float, float]]]:
 
 
 class Dealer:
-    def __init__(self, bases: dict, dt: float, cards: list[str], pack: str, read=cardkit.poses) -> None:
+    def __init__(self, bases: dict, dt: float, cards: list[str], pack: str, read=cardkit.poses, todo=None,
+                 phase: str = "over") -> None:
         self.bases = {a: np.asarray(b, float) for a, b in bases.items()}
         self.dt, self.read, self.pack = dt, read, pack
         self.q = {a: np.array(READY, float) for a in self.bases}
         self.tcp = {a: ik.tcp_pose(self.q[a], self.bases[a])[0].copy() for a in self.bases}
         self.grip = dict.fromkeys(self.bases, 1.0)
-        self.yaw = dict.fromkeys(self.bases, 0.0)  # each hand's turn about the vertical
-        self.todo = jobs(cards)
+        self.todo = jobs(cards) if todo is None else list(todo)
         self.engaged: set = set()  # arms that have left the ready pose (pointing straight down since)
         self.swing: dict = {}  # arm -> [from joints, to joints, elapsed, duration]: a joint-space move
-        self.phase, self.clock, self.last, self.still, self.anchor = "over", 0.0, None, 0, None
+        self.lead = np.zeros(2)  # unit vector from the card to its box, fixed when the fingertip is set down
+        self.homing = None  # an arm on its way back to the ready pose, out of the other arm's way
+        self.phase, self.clock, self.last, self.still, self.anchor = phase, 0.0, None, 0, None
         self.worst_ik = 0.0
 
     # -- helpers ---------------------------------------------------------------------------------------------------
@@ -101,11 +99,17 @@ class Dealer:
             return True
         return False
 
-    def _turn(self, arm: str, target: float) -> bool:
-        target = float(np.clip(target, -MAX_TURN, MAX_TURN))
-        d, step = target - self.yaw[arm], TURN * self.dt
-        self.yaw[arm] = target if abs(d) <= step else self.yaw[arm] + math.copysign(step, d)
-        return abs(d) <= step
+    def _reach(self, arm: str, target, speed: float) -> bool:
+        """Cartesian move, or a joint-space swing if the arm is still at its ready pose."""
+        if arm in self.engaged:
+            return self._move(arm, target, speed)
+        if arm not in self.swing:
+            self.goal_q, _, _ = ik.solve(target, DOWN, np.array(READY, float), base_pos=self.bases[arm], iters=300)
+        if self._swing(arm, self.goal_q):
+            self.engaged.add(arm)
+            self.tcp[arm] = np.asarray(target, float).copy()
+            return True
+        return False
 
     def _wait(self, seconds: float) -> bool:
         self.clock += self.dt
@@ -132,32 +136,27 @@ class Dealer:
 
     # -- one control step ------------------------------------------------------------------------------------------
     def act(self, observation=None):
+        if self.homing is not None:
+            if self._swing(self.homing, READY):
+                self.engaged.discard(self.homing)
+                self.grip[self.homing] = 1.0
+                self.homing = None
+            return self._action(), False
         if not self.todo:
-            done = all([self._swing(a, READY) for a in sorted(self.engaged)])
-            if done:
-                self.engaged.clear()
-            return self._action(), done
+            return self._action(), True
         arm, card, box = self.todo[0]
         state = self.read([card, self.pack])
         if card not in state:  # before the first simulator step
             return self._action(), False
         (pos, rot), (pack_pos, _) = state[card], state[self.pack]
         top, _, axis = self._plane(pos, rot)
-        self.grip[arm] = GRIP
+        self.grip[arm] = 0.0 if self.phase in ONE_TIP else GRIP
         edge = pack_pos[0] + L.CARD_L / 2
         if MODE == "edge":  # a poor deal: beside the pack, on the edges of its top cards
             top = top - [0.0, 0.0, 0.0015]
         if self.phase == "over":
             x = pos[0] - BACK if MODE != "edge" else pack_pos[0] - L.CARD_L / 2 - 0.010
-            hover = self._tips(x, pos[1], top[2], PRESS, HOVER)
-            if arm not in self.engaged:
-                if self.anchor is None:
-                    self.anchor, _, _ = ik.solve(hover, DOWN, np.array(READY, float), base_pos=self.bases[arm], iters=300)
-                if self._swing(arm, self.anchor):
-                    self.engaged.add(arm)
-                    self.tcp[arm] = hover
-                    self._next("touch")
-            elif all([self._move(arm, hover, FREE), self._turn(arm, 0.0)]):
+            if self._reach(arm, self._tips(x, pos[1], top[2], PRESS, HOVER), FREE):
                 self._next("touch")
         elif self.phase == "touch":
             if self._move(arm, self._tips(self.tcp[arm][0], self.tcp[arm][1], top[2], PRESS), SLOW) and self._wait(0.25):
@@ -176,9 +175,7 @@ class Dealer:
                 self._next("over the front")
         elif self.phase == "over the front":
             g = top + axis * (L.CARD_L / 2 - FRONT)
-            # the hand turns to the card's heading, so both fingertips sit across it
-            if all([self._move(arm, self._tips(g[0], g[1], g[2], PRESS_DRAW, 0.012), FREE / 2),
-                    self._turn(arm, heading(axis))]):
+            if self._move(arm, self._tips(g[0], g[1], g[2], PRESS_DRAW, 0.012), FREE / 2):
                 self._next("touch the front")
         elif self.phase == "touch the front":
             x, y = self.tcp[arm][:2]
@@ -189,28 +186,40 @@ class Dealer:
             self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_DRAW)
             back = pos[0] - abs(axis[0]) * L.CARD_L / 2 - abs(axis[1]) * L.CARD_W / 2
             flat = abs(rot[2, 2]) > math.cos(math.radians(2.0)) and top[2] < pack_pos[2]
-            if (flat and back > edge + CLEAR_PACK) or self._wait(4.0):
+            if (flat and back > edge + CLEAR_PACK) or self._wait(5.0):
                 self._next("rise")
-        elif self.phase == "rise":
+        elif self.phase == "rise":  # the fingers close into one fingertip on the way up
             if self.anchor is None:
                 self.anchor = self.tcp[arm].copy()
-            if self._move(arm, self.anchor + [0.0, 0.0, 0.01], 0.08):
-                self._next("over the middle")
-        elif self.phase == "over the middle":
-            if all([self._move(arm, self._tips(top[0], top[1], top[2], PRESS_FELT, 0.01), FREE / 2),
-                    self._turn(arm, heading(axis))]):
-                self._next("touch the middle")
-        elif self.phase == "touch the middle":
+            if self._move(arm, self.anchor + [0.0, 0.0, 0.015], 0.08):
+                self._next("over the lead")
+        elif self.phase == "over the lead":
+            if self.anchor is None:
+                self.anchor = True
+                d = np.asarray(box, float) - pos[:2]
+                self.lead = d / np.linalg.norm(d)
+            x, y = pos[:2] + LEAD * self.lead
+            if self._reach(arm, self._tips(x, y, top[2], PRESS_FELT, 0.012), FREE / 2) and self._wait(0.4):
+                self._next("touch the lead")
+        elif self.phase == "touch the lead":
             x, y = self.tcp[arm][:2]
             if self._move(arm, self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT), SLOW) and self._wait(0.2):
                 self._next("slide")
-        elif self.phase == "slide":  # fingertips on the card's middle: it is carried without being swung round
+        elif self.phase == "slide":  # straight to the box; the card trails behind the fingertip
+            goal = np.asarray(box, float) + LEAD * self.lead
+            d = goal - self.tcp[arm][:2]
+            dist = float(np.linalg.norm(d))
+            x, y = goal if dist <= DRAG * self.dt else self.tcp[arm][:2] + d / dist * DRAG * self.dt
+            self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT)
+            if dist <= DRAG * self.dt:
+                self._next("place")
+        elif self.phase == "place":  # the last few millimetres, on the card's own position
             err = np.asarray(box, float) - pos[:2]
             dist = float(np.linalg.norm(err))
-            step = min(DRAG * self.dt, dist)
+            step = min(DRAG / 2 * self.dt, dist)
             x, y = self.tcp[arm][:2] + (err / dist * step if dist > 1e-6 else 0.0)
             self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT)
-            if dist < 0.002 or self._wait(12.0):
+            if dist < 0.002 or self._wait(2.0):
                 self._next("settle")
         elif self.phase == "settle":
             if self._wait(0.3):
@@ -220,19 +229,27 @@ class Dealer:
                 self.anchor = self.tcp[arm].copy()
             if self._move(arm, self.anchor + [0.0, 0.0, 0.04], 0.08):
                 self.todo.pop(0)
+                if not self.todo or self.todo[0][0] != arm:
+                    self.homing = arm
                 self._next("over")
         return self._action(), False
 
-    def _action(self):
+    def _joints(self) -> dict:
         out = {}
         for arm in ("left", "right"):
             if arm in self.engaged and arm not in self.swing:
-                down = ik.matrix_to_quat_xyzw(grip_rotation(self.yaw[arm]))
-                q, pe, _ = ik.solve(self.tcp[arm], down, self.q[arm], base_pos=self.bases[arm], iters=60)
+                q, pe, _ = ik.solve(self.tcp[arm], DOWN, self.q[arm], base_pos=self.bases[arm], iters=60)
                 self.q[arm], self.worst_ik = q, max(self.worst_ik, pe)
             out[arm] = np.r_[self.q[arm], self.grip[arm]]
-        try:
-            from inspect_robots_yam.packing import pack
-        except ImportError:  # offline tests
-            return np.r_[out["left"], out["right"]]
-        return pack(out["left"], out["right"])
+        return out
+
+    def _action(self):
+        return pack_action(self._joints())
+
+
+def pack_action(joints: dict):
+    try:
+        from inspect_robots_yam.packing import pack
+    except ImportError:  # offline tests
+        return np.r_[joints["left"], joints["right"]]
+    return pack(joints["left"], joints["right"])
