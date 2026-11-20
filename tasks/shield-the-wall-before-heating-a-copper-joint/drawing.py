@@ -83,7 +83,7 @@ def top_view(ox, oy):
     out.append(rect(X(sy + L.PANEL_W / 2), Y(sx - L.SHIELD_T / 2), L.SHIELD_T * CM * S, L.WING * CM * S, "#fff"))
     out.append(text(X(sy) + 10, Y(sx - 0.05), "shield at the start", 11))
     tx, ty = L.TORCH_HOME
-    out.append(f'<circle cx="{X(ty):.1f}" cy="{Y(tx):.1f}" r="{L.MARK_D / 2 * CM * S:.1f}" fill="#fff" stroke="#333"/>')
+    out.append(rect(X(ty + L.MARK_W / 2), Y(tx + L.MARK_W / 2), L.MARK_W * CM * S, L.MARK_W * CM * S, "#fff"))
     out.append(f'<circle cx="{X(ty):.1f}" cy="{Y(tx):.1f}" r="{L.CYL_D / 2 * CM * S:.1f}" fill="#2a56b0" stroke="#333"/>')
     out.append(text(X(ty), Y(tx - 0.075), "torch on its mark", 11))
     for y in (0.305, -0.305):

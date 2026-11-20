@@ -416,7 +416,7 @@ class World:
         x, y = point[:2]
         if L.STUD_FRONT_X <= x <= L.OSB_X and L.STUD_R_Y1 <= y <= L.STUD_L_Y0:
             return TOP + L.BLOCK_TOP
-        return TOP + (0.001 if math.hypot(x - L.TORCH_HOME[0], y - L.TORCH_HOME[1]) <= L.MARK_D / 2 else 0.0)
+        return TOP + (0.001 if max(abs(x - L.TORCH_HOME[0]), abs(y - L.TORCH_HOME[1])) <= L.MARK_W / 2 else 0.0)
 
     def sink(self, name, pose):
         """How far the part's lowest point is under what it stands on."""

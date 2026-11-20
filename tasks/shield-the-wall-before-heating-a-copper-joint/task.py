@@ -8,8 +8,8 @@ On the table:
   on it 34 cm above the table
 - a heat shield standing on the bench in front of the wall, left of the riser: a 12 x 12 in mouldable blanket bent once
   into an L (a panel and a wing), white face toward the arms
-- a brass pencil-flame torch on a 14.1 oz propane cylinder, standing on a white mark right of the riser, burner toward
-  the wall. A light-blue rod in the burner is its flame
+- a brass pencil-flame torch on a 14.1 oz propane cylinder, standing on a white square mark right of the riser, burner
+  toward the wall. A light-blue rod in the burner is its flame
 
 The scorer (scoring.py) reads poses only. The demo (demo_script, played by demokit.py) reads poses and its own joints.
 """
@@ -49,9 +49,9 @@ OBJECTS = [
     Cylinder("coupling", radius=L.COUPLING_D / 2, height=L.COUPLING_L, pos=_at((_px, _py, L.COUPLING_Z)), color=L.COPPER),
     Cylinder("flux_low", radius=L.COUPLING_D / 2 + 0.001, height=0.004, pos=_at((_px, _py, L.COUPLING_Z - L.COUPLING_L / 2 - 0.002)), color=L.FLUX),
     Cylinder("flux_high", radius=L.COUPLING_D / 2 + 0.001, height=0.004, pos=_at((_px, _py, L.COUPLING_Z + L.COUPLING_L / 2 + 0.002)), color=L.FLUX),
-    Cylinder("torch_mark", radius=L.MARK_D / 2, height=0.001, pos=_at((*L.TORCH_HOME, 0.0005)), color=L.MARK),
+    Box("torch_mark", size=(L.MARK_W, L.MARK_W, 0.001), pos=_at((*L.TORCH_HOME, 0.0005)), color=L.MARK),
     Box("shield", size=L.SHIELD_PARTS[0][0], pos=_at(L.SHIELD_START + L.WING_OFF), color=L.WHITE, mass=L.SHIELD_KG),
-    Cylinder("torch", radius=L.CYL_D / 2, height=L.CYL_WALL_H, pos=_at((*L.TORCH_HOME, 0.001 + L.TORCH_ORIGIN_UP)), color=L.BLUE, mass=L.TORCH_KG),
+    Cylinder("torch", radius=L.CYL_D / 2, height=L.CYL_WALL_H, pos=_at((*L.TORCH_HOME, 0.001 + L.FOOT_PROUD + L.TORCH_ORIGIN_UP)), color=L.BLUE, mass=L.TORCH_KG),
 ]
 kit.compound("shield", [(size, tuple(np.array(offset) - L.WING_OFF), colour) for size, offset, colour in L.SHIELD_PARTS[1:]])
 kit.compound("torch", [(size, offset, colour, (0.0, tilt, 0.0)) for size, offset, colour, tilt in L.TORCH_PARTS])
@@ -290,7 +290,7 @@ def demo_script(ctx):
         yield from steer(l, shield, (where + np.array([0.0, 0.0, 0.002]), eye), t=0.8, tol=0.002, label="shield: set down")
         yield from unload(l, "shield: set down")
         yield from l.open(label="shield: let go")
-        yield from l.move(l.at() + np.array([-0.14, 0.0, 0.0]), t=1.5, label="shield: draw back")
+        yield from l.move(l.at() - 0.14 * l.approach_axis(), t=1.5, label="shield: draw back")
 
     def place_shield():
         yield from take_shield()
@@ -320,11 +320,11 @@ def demo_script(ctx):
         yield from steer(r, tip, (goal + back + np.array([0.0, 0.0, 0.03]), rm), t=1.0, timeout=0.5, label="torch: draw back")
 
     def stand_torch():
-        mark = np.array([*L.TORCH_HOME, TOP + 0.001])
-        yield from steer(r, foot, (mark, eye), t=1.5, until=lambda: foot()[0][2] < mark[2] + 0.002, label="torch: lower")
+        mark = np.array([*L.TORCH_HOME, TOP + 0.001 + L.FOOT_PROUD])  # where the base's centre is when the torch stands
+        yield from steer(r, foot, (mark, eye), t=1.5, until=lambda: foot()[0][2] < mark[2] + 0.0015, label="torch: lower")
         yield from unload(r, "torch: lower")
         yield from r.open(label="torch: let go")
-        yield from r.move(r.at() + np.array([-0.06, 0.0, 0.0]), t=0.8, label="torch: draw back")
+        yield from r.move(r.at() - 0.06 * r.approach_axis(), t=0.8, label="torch: draw back")
         yield from r.move(r.at() + np.array([-0.02, 0.0, 0.08]), t=1.0, label="torch: clear")
 
     def return_torch():

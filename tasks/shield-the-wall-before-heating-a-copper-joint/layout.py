@@ -64,7 +64,8 @@ FLAME_TIP = MOUTH + FLAME_LEN * _D
 FLAME_DIR = _D
 TORCH_TOP_UP = 0.40  # overall height, about (est)
 TORCH_HOME = (0.380, -0.170)  # the mark's centre
-MARK_D = 0.100
+MARK_W = 0.100  # the mark: a white square of card
+FOOT_PROUD = 0.0005  # the cylinder's foot: two crossed strips this far proud of its base (see the README's design notes)
 
 # colours (sRGB)
 OSB, SPRUCE, COPPER, FLUX = (0.80, 0.66, 0.42), (0.88, 0.78, 0.58), (0.78, 0.47, 0.22), (0.95, 0.95, 0.92)
@@ -103,6 +104,8 @@ SHIELD_COM = sum(v * np.array(offset) for v, (_, offset, _) in zip(_VOLUMES, SHI
 _Z = lambda up: up - TORCH_ORIGIN_UP  # noqa: E731
 _BEND = np.array([0.0, 0.0, _Z(BEND_UP)])
 TORCH_PARTS = [
+    ((0.068, 0.026, 0.003), (0.0, 0.0, _Z(0.0015 - FOOT_PROUD)), BLUE, 0.0),  # foot, one strip
+    ((0.026, 0.068, 0.003), (0.0, 0.0, _Z(0.0015 - FOOT_PROUD)), BLUE, 0.0),  # foot, the strip across it
     ((0.060, 0.012), (0.0, 0.0, _Z(0.221)), BLUE, 0.0),  # the cylinder's shoulder, lower step
     ((0.044, 0.013), (0.0, 0.0, _Z(0.2335)), BLUE, 0.0),  # the cylinder's shoulder, upper step
     ((0.032, 0.022), (0.0, 0.0, _Z(0.251)), BLACK, 0.0),  # valve collar
