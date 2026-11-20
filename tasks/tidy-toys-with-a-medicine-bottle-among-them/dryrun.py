@@ -268,7 +268,10 @@ def unlock(env, part, link):
 def run(mode, max_steps=4000, hold_s=2.0):
     global WORLD, CTX
     WORLD = World()
-    env = types.SimpleNamespace(unwrapped=types.SimpleNamespace(step_dt=DT))
+    joints = types.SimpleNamespace(torch=types.SimpleNamespace(clone=lambda: 0.0))
+    box = types.SimpleNamespace(data=types.SimpleNamespace(default_joint_pos=joints, default_joint_vel=joints), write_joint_position_to_sim_index=lambda position: None,
+                                write_joint_velocity_to_sim_index=lambda velocity: None)  # the world above starts as TIDY_START says
+    env = types.SimpleNamespace(unwrapped=types.SimpleNamespace(step_dt=DT, scene={"lock_box": box}))
     task.states = lambda e, names: {n: WORLD.state(n) for n in names}
     m.state = lambda e, name: WORLD.box_state()
     m.fingertips = lambda e: WORLD.fingertips()

@@ -170,6 +170,10 @@ class Trial:
         if LUGS in b._THREAD_PATHS:  # once the scene exists: the lugs as they are when the cap is off (bodykit switches the joint off at every reset)
             b.set_slide_target(LUGS, -r.CAP_RISE)
             b.set_turn_damping(LUGS, r.CAP_DRAG_NM)
+        if env is not None and START == "lid_down":  # the harness's reset leaves a mechanism's joints where they are
+            box = env.unwrapped.scene["lock_box"]
+            box.write_joint_position_to_sim_index(position=box.data.default_joint_pos.torch.clone())
+            box.write_joint_velocity_to_sim_index(velocity=box.data.default_joint_vel.torch.clone() * 0.0)
 
     def obs(self, env) -> r.Obs:
         s = states(env, ("vial", "cap", *TABLET_NAMES, *TOY_NAMES))
@@ -283,7 +287,7 @@ def demo_script(ctx):
     report(env, f"{mode} start: ")
     flags = {"held": False, "capped": False, "let_go": False}
     down0 = d.down(0)
-    pace = {"cap": 0.6, "snap": 0.75, "lid": 0.75, "lock": 0.75, "toys": 0.75}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
+    pace = {"cap": 0.6, "snap": 0.6, "lid": 0.75, "lock": 0.6, "toys": 0.75}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
     T = lambda seconds: seconds * pace  # noqa: E731
 
     def vial_seat(up: float = 0.0) -> np.ndarray:
