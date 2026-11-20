@@ -20,7 +20,7 @@ hold it through the move and the set, not to choose the cut face.
 
 ## Files
 
-- `task.py`: the scene (station, mould, skin strip, forceps), the per-step trial and the scripted demo.
+- `task.py`: the scene (station, mould, skin strip, bent-tip forceps), the per-step trial and the scripted demo (with its press controller).
 - `embedkit.py`: the declared rules (curling, setting) and the scoring ladder, pure Python; `write_pose` holds a curled or set strip.
 - `mechkit.py`, `demokit.py`: from the accepted task `heat-shrink-lug`, unchanged. `mechkit` writes the props as USD text and hooks `yam_arena.scene`
   and `yam_arena.inspect_embodiment` as they load (nothing on disk changes); `demokit` runs closed-loop scripted demos.
@@ -53,11 +53,15 @@ PYTHONPATH=<yam-isaac-lab-arena> python3 test_embed_tissue_flat_in_paraffin.py  
 The demo is a scripted reference, not a policy. It reads the poses of the mould, the strip and the forceps, all in view of the cameras, and never
 the rules' state.
 
-1. The left hand takes the forceps from the well and tilts them 30 degrees, tips towards the mould, so that the hand stays off to the mould's left side.
-2. The tips come down onto the strip, 2 mm into its top (closed loop on where the tips are), and slide it to the middle of the mould, 2 mm at a time.
-3. The right hand pinches the mould by its long walls at its near end and slides it 10 cm across onto the cold block; the left hand follows the
-   mould's pose every step, keeping the press.
-4. The right hand lets go and backs away; the left keeps pressing for 9.5 s, then lifts the forceps straight up and stands them back in the well.
+1. The left hand takes the bent-tip forceps from the well and tilts them 50 degrees, so that the bent tips stand upright and the hand stays 6 cm off
+   to the mould's left side.
+2. The right hand pinches the mould by its long walls at its near end and holds it still.
+3. The tips come to 3 mm above the strip (closed loop on where the tips are) and go straight down 6 mm. From then on a press controller runs every
+   control step: if the tips drift out of a safe zone on the strip's top it shifts the hand level towards it; its height creeps down until the tips
+   are 1.5 mm into the strip (at most 4 mm below the first press); while centring it moves the hand by a quarter of the strip's offset from the
+   mould's middle, so the pressed strip goes with the tips.
+4. The right hand slides the mould 10 cm across onto the cold block while the controller carries the left hand with the mould; both hold for 9.5 s.
+5. The right hand lets go and backs away; the left lifts the forceps straight up, brings their tips over the well (closed loop) and stands them back.
 
 Failure checks (`--mode`):
 
@@ -94,8 +98,11 @@ wax" is any of the 12 fingertip points per hand (`mechkit.fingertips`) inside th
   the curl and pressing no longer helps. The rule never moves the strip for the robot: a pressed strip lies on the floor under the tips by physics.
 - **The set.** After 8 s on the cold block the strip is fixed in the mould where it lies (its pose rewritten each control step relative to the
   mould's, the technique of the accepted tasks `bayonet-mate` and `casement-stay-last-hole`).
-- **Why the forceps tilt.** Each gripper is about 7 x 10 cm across its body; with the forceps upright the two hands would meet above the mould. Tilted
-  30 degrees, the pressing hand sits 5 cm to the side, as a technician's hand does.
+- **Why bent-tip forceps.** Each gripper is about 7 x 10 cm across its body; with straight forceps held upright the two hands meet above the mould,
+  and straight forceps held tilted press at a slant and push the strip sideways. Embedding forceps with bent tips, held with the body tilted 50
+  degrees, press straight down while the hand sits 6 cm to the side, as a technician's hand does.
+- **The strip's friction.** In molten wax the strip sits in a film that holds it to the floor; the simulator gives it high friction (1.5) so that
+  the tips' press holds it in place and it moves only when the tips carry it.
 - **Weights.** The strip weighs 2 g in the simulator (a real one about 0.2 g) so that the contact solver handles it; the forceps 25 g, the mould with
   its wax 22 g.
 
@@ -103,10 +110,10 @@ wax" is any of the 12 fingertip points per hand (`mechkit.fingertips`) inside th
 
 | Item | Source | Price |
 |---|---|---|
-| Embedding station with warm plate, cold spot and forceps well, or: a lab hot plate under a 6 mm aluminium plate at 60 C, an aluminium block on a fresh cold pack (about -5 C) beside it, flush, with a 1 cm PTFE strip between, and a 12 mm tube for the forceps | histology suppliers; any lab hot plate with a 60 C setting | not checked |
+| Embedding station with warm plate, cold spot and forceps well, or: a lab hot plate under a 6 mm aluminium plate at 60 C, an aluminium block on a fresh cold pack (about -5 C) beside it, flush, with a 1 cm PTFE strip between, and a 20 mm square tube for the forceps | histology suppliers; any lab hot plate with a 60 C setting | not checked |
 | Stainless steel base mould 24 x 37 x 9 mm | histology suppliers (a standard size) | not checked |
 | Histology paraffin, 56 to 58 C melting point, poured 6 mm deep from a 60 C wax bath | histology suppliers | not checked |
-| Embedding forceps, 150 mm, serrated tips | histology suppliers | not checked |
+| Embedding forceps, 150 mm, tips bent about 50 degrees, serrated | histology suppliers | not checked |
 | Skin strips 8 x 10 x 2 mm, cut from one processed piece of pig skin, cut face (the face to be sectioned) inked with tissue-marking dye; dropped in cut face down near the far end, which must stand 2 to 4 mm off the floor (read against the 9 mm wall) or the strip is retired | prepared once by any histology lab, one batch per test series | reused: recovered by re-melting the block at 60 C |
 | Heat-resistant silicone sleeves for the gripper fingertips | any | not checked |
 
@@ -116,9 +123,11 @@ reaches a sleeve sets in seconds and is peeled off.
 ## Runtime and results
 
 - Run limit 3,600 control steps (180 s at 20 Hz). One fixed layout; `object_jitter=0`; no randomness.
-- Offline (kinematic stand-in in the test file, arms reaching their commands exactly): the full demo reaches success at step 758 (38 s); the failure
-  checks score as in the table above.
-- Simulator results: to be filled in from the Brev runs.
+- Scripted demo, GPU physics with cameras (one L40S): 1.0, success at step 837 (41.9 s of simulated time), about 170 s of wall time.
+- Failure checks, CPU physics (`--fast`): full 1.0; lift, nohold, still, dip and none 0.0.
+- Dream-1: 0.0; no refusal; it ran all 3,600 steps (about 10 minutes of wall time) without setting the strip flat.
+- Offline (kinematic stand-in in the test file, arms reaching their commands exactly): the same modes score the same; the full demo succeeds at
+  step 803.
 
 ## Credits
 
