@@ -198,8 +198,8 @@ def driver():
 
 FRAME, SUPPORTS, BLOCK, BRACKET, DRIVER = frame(), supports(), block(), bracket(), driver()
 PROP_H = g.BAR + (g.SCREW_END if START == "onlips" else 0.0)
-PROP = m.fixed("prop", (g.MOUNT_XY[0], g.MOUNT_XY[1] + (ONLIPS[1] if START == "onlips" else 0.0) + 0.150, TOP), [("prop", box_mesh((0.030, 0.012, PROP_H), (0.0, 0.0, PROP_H / 2)), "foam")],
-               [m.col_box("c_prop", (0.030, 0.012, PROP_H), (0.0, 0.0, PROP_H / 2))], LOOKS, friction=(0.9, 0.8))  # holds the arm level in the tests that start on the bar, where no hand does
+PROP = m.fixed("prop", (g.MOUNT_XY[0] - 0.006, g.MOUNT_XY[1] + (ONLIPS[1] if START == "onlips" else 0.0) + 0.150, TOP), [("prop", box_mesh((0.016, 0.012, PROP_H), (0.0, 0.0, PROP_H / 2)), "foam")],
+               [m.col_box("c_prop", (0.016, 0.012, PROP_H), (0.0, 0.0, PROP_H / 2))], LOOKS, friction=(0.9, 0.8))  # holds the arm level in the tests that start on the bar, where no hand does; it stands clear of the camera's plate
 OBJECTS = [FRAME, BLOCK, BRACKET, DRIVER] + ([PROP] if START in ("mounted", "onlips") else [] if START else [SUPPORTS])
 
 
