@@ -63,6 +63,7 @@ front edge (it stays shut); slide the lock's button (it does not move).
 | Run | Physics | Result |
 |---|---|---|
 | Scripted demo, `--mode full` | GPU, cameras, 640 x 360 video | 1.0: success at step 889 of 3,600 (44.5 s) |
+| Scripted `--mode literal`: everything on the mat into the toy basket, the open vial first | CPU, no cameras | 0.0: latched "in the basket" at 10.1 s; the three toys tidied afterwards change nothing |
 | Dream-1 | | TBD |
 
 The demo run, by the scorer's log: vial held at 6.0 s; cap on its lugs at 10.9 s and snapped at 13.2 s; vial let go in the lock
@@ -75,8 +76,8 @@ on. `place`: the closed vial, carried by its cap, let go in the lock box and sta
 shut and the hasp hangs 8 degrees off the lock. `lock`: the hasp pressed home and caught. `dials`: one stroke turns the middle
 dial 67 degrees. `toys`: the block into the basket.
 
-The other rows of the scoring table (`none` 0, `literal` 0 with the latch "in the basket", `toys_only` 0, `uncapped` 0.5,
-`no_dials` 0) were run on the kinematic stand-in (`dryrun.py`, in `test_task.py`), not in the simulator.
+The other rows of the scoring table (`none` 0, `toys_only` 0, `uncapped` 0.5, `no_dials` 0) were run on the kinematic stand-in
+(`dryrun.py`, in `test_task.py`), not in the simulator.
 
 ## The demo
 
