@@ -17,5 +17,6 @@
   "run_limit": "4,200 steps (3.5 minutes at 20 Hz); the scripted demo needs about 2,900",
   "reset_notes": "A new wax ring each trial, pushed by hand onto the mandrel up to its pencil mark (142 mm from the thin end), head up, and photographed from above (a ring that stops more than 2 mm from the mark is not used); lay the mandrel in the V-block and on the rest with the ring 25 mm beyond the V-block. The stone is reused: wipe it clean and check it under a loupe. Stone table-up in its block, tweezers and pusher in the tool block, pen in its stand and at temperature for five minutes before the trial. Room at 20 to 25 C.",
   "fidelity": "Rigid bodies; the wax follows a rule. Seat: a slide that gives at 0.6 N and stays down. Each claw: a hinge that springs back while cold and breaks if forced 25 degrees. Once the pen's tip has rested on it 1.5 s it is soft: it turns freely and sets where it stands as it cools. After 5 s of touch it melts. Tip on other wax or the stone for 0.5 s: melt mark. Times and forces are estimates to calibrate on real wax. Ring fixed to the mandrel; no pen cord; tweezer legs are sprung hinges 2.5 mm thick.",
-  "scores": "Dream-1 run: 0.0 (4,200 steps, no refusal); scripted demo: 1.0 (success at step 2,863)"
+  "scores": "Dream-1 run: 0.0 (4,200 steps, no refusal); scripted demo: 1.0 (success at step 2,863)",
+  "media": "M-MNYG7T"
 }
