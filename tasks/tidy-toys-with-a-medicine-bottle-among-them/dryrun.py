@@ -71,7 +71,7 @@ class World:
                                                                                ("brick_red", task.BRICK_RED), ("brick_yellow", task.BRICK_YELLOW))}
         self.tablets = np.array(g.tablet_starts())  # in the vial's frame
         self.held = {}  # name -> (side, position in the hand's frame, rotation in the hand's frame)
-        self.thread_on, self.locked, self.rise, self.cap_yaw = False, False, r.CAP_RISE, 0.0
+        self.thread_on, self.locked, self.rise, self.cap_yaw = task.START == "cap_on", False, r.CAP_RISE, 0.0
         self.lid = 0.0 if task.START == "lid_down" else g.LID_OPEN_DEG
         self.hasp, self.caught, self.dials = g.HASP_REST_DEG, False, [0.0, 0.0, 0.0]
         self.behind, self.last_tip_z, self.notes = {}, {}, []
