@@ -70,11 +70,12 @@ The demo run, by the scorer's log: vial held at 6.0 s; cap on its lugs at 10.9 s
 box at 22.3 s, standing; lid shut by 30.7 s; hasp caught at 35.6 s; the middle dial 67 degrees off its code at 39.9 s (score
 0.75); last toy in the basket and both arms clear and still for 1 s at 44.5 s (1.0).
 
-Mechanism tests in the simulator (CPU physics, no cameras, 200 control steps each): `settle`: every part at rest where the setup
-puts it, the lid open on its stop, the ten tablets in the vial. `cap`: the cap set on the free-standing vial's neck and turned
-on. `place`: the closed vial, carried by its cap, let go in the lock box and standing. `lid`: pushed past upright, it falls
-shut and the hasp hangs 8 degrees off the lock. `lock`: the hasp pressed home and caught. `dials`: one stroke turns the middle
-dial 67 degrees. `toys`: the block into the basket.
+Mechanism tests in the simulator during development (CPU physics, no cameras, 200 control steps each; the approach routes of
+`cap`, `lid`, `lock` and `toys` were changed afterwards, and the full demo above runs the final ones): `settle`: every part at
+rest where the setup puts it, the lid open on its stop, the ten tablets in the vial. `cap`: the cap set on the free-standing
+vial's neck and turned on. `place`: the closed vial, carried by its cap, let go in the lock box and standing. `lid`: pushed
+past upright, it falls shut and the hasp hangs 8 degrees off the lock. `lock`: the hasp pressed home and caught. `dials`: one
+stroke turns the middle dial 67 degrees. `toys`: the block into the basket.
 
 The other rows of the scoring table (`none` 0, `toys_only` 0, `uncapped` 0.5, `no_dials` 0) were run on the kinematic stand-in
 (`dryrun.py`, in `test_task.py`), not in the simulator.
