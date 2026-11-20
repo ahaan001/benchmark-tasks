@@ -6,8 +6,8 @@ One card at a time, with the fingers 4 cm apart and pointing straight down:
 1. Both fingertips come down on the back half of the top card and push it forward until most of it hangs over the
    pack's front edge, the tips stopping short of the edge so they never lever on the overhang.
 2. The tips lift. The card tips over the edge and comes to rest leaning, its front edge on the felt.
-3. The tips come down on the card near that front edge and slide it across the felt to its box. Its back end leaves
-   the pack on the way and the card drops flat.
+3. The hand turns to the card's heading, the tips come down on the card near that front edge and slide it across the
+   felt to its box, turning it square on the way. Its back end leaves the pack and the card drops flat.
 4. The tips lift straight up.
 
 ``DEAL_MODE`` (environment variable): ``full`` (four cards), ``one`` (one card to box 2), and two poor deals to
@@ -19,6 +19,7 @@ its top, so they push on the back edges of the top cards and shear the pack.
 
 from __future__ import annotations
 
+import math
 import os
 
 import numpy as np
@@ -33,14 +34,21 @@ MODE = os.environ.get("DEAL_MODE", "full")
 DEBUG = bool(os.environ.get("TASK_DEBUG"))
 HALF_GAP = 0.020  # each fingertip this far from the card's centre line
 GRIP = (HALF_GAP - 0.0015) / 0.047  # share of fully open: the tips' inner faces are 47 mm from the centre when open
-PRESS = -0.001 if MODE == "light" else 0.0004  # the tips are commanded this far into the surface they ride on
-PRESS_FELT = 0.0006
+PRESS = -0.001 if MODE == "light" else 0.0007  # the tips are commanded this far into the surface they ride on
+PRESS_FELT = 0.0008
 BACK = 0.032  # the tips land this far behind the card's centre
 SHORT = 0.008  # ... and stop this far short of the pack's front edge
 FRONT = 0.015  # second touch: this far behind the card's front edge
 FREE, SLOW, PUSH, DRAG = 0.30, 0.02, 0.04, 0.06  # m/s
 HOVER = 0.03
+TURN = math.radians(40.0)  # rad/s: how fast the hand turns about the vertical
+MAX_TURN = math.radians(60.0)
 DOWN = ik.matrix_to_quat_xyzw(grip_rotation(0.0))
+
+
+def heading(axis) -> float:
+    """A card's turn about the vertical, from its long axis (taken as pointing away from the robot)."""
+    return math.atan2(float(axis[1]), float(axis[0]))
 
 
 def jobs(cards: list[str]) -> list[tuple[str, str, tuple[float, float]]]:
@@ -58,6 +66,7 @@ class Dealer:
         self.q = {a: np.array(READY, float) for a in self.bases}
         self.tcp = {a: ik.tcp_pose(self.q[a], self.bases[a])[0].copy() for a in self.bases}
         self.grip = dict.fromkeys(self.bases, 1.0)
+        self.yaw = dict.fromkeys(self.bases, 0.0)  # each hand's turn about the vertical
         self.todo = jobs(cards)
         self.engaged: set = set()  # arms that have left the ready pose (pointing straight down since)
         self.swing: dict = {}  # arm -> [from joints, to joints, elapsed, duration]: a joint-space move
@@ -86,6 +95,12 @@ class Dealer:
             del self.swing[arm]
             return True
         return False
+
+    def _turn(self, arm: str, target: float) -> bool:
+        target = float(np.clip(target, -MAX_TURN, MAX_TURN))
+        d, step = target - self.yaw[arm], TURN * self.dt
+        self.yaw[arm] = target if abs(d) <= step else self.yaw[arm] + math.copysign(step, d)
+        return abs(d) <= step
 
     def _wait(self, seconds: float) -> bool:
         self.clock += self.dt
@@ -137,7 +152,7 @@ class Dealer:
                     self.engaged.add(arm)
                     self.tcp[arm] = hover
                     self._next("touch")
-            elif self._move(arm, hover, FREE):
+            elif all([self._move(arm, hover, FREE), self._turn(arm, 0.0)]):
                 self._next("touch")
         elif self.phase == "touch":
             if self._move(arm, self._tips(self.tcp[arm][0], self.tcp[arm][1], top[2], PRESS), SLOW) and self._wait(0.25):
@@ -156,7 +171,9 @@ class Dealer:
                 self._next("over the front")
         elif self.phase == "over the front":
             g = top + axis * (L.CARD_L / 2 - FRONT)
-            if self._move(arm, self._tips(g[0], g[1], g[2], PRESS_FELT, 0.012), FREE / 2):
+            # the hand turns to the card's heading, so both fingertips sit across it
+            if all([self._move(arm, self._tips(g[0], g[1], g[2], PRESS_FELT, 0.012), FREE / 2),
+                    self._turn(arm, heading(axis))]):
                 self._next("touch the front")
         elif self.phase == "touch the front":
             x, y = self.tcp[arm][:2]
@@ -168,7 +185,8 @@ class Dealer:
             step = min(DRAG * self.dt, dist)
             x, y = self.tcp[arm][:2] + (err / dist * step if dist > 1e-6 else 0.0)
             self.tcp[arm] = self._tips(x, y, self._surface(pos, rot, x, y), PRESS_FELT)
-            if dist < 0.002 or self._wait(12.0):
+            self._turn(arm, self.yaw[arm] - heading(axis))  # the card turns with the hand: square it up on the way
+            if (dist < 0.002 and abs(heading(axis)) < math.radians(3.0)) or self._wait(12.0):
                 self._next("settle")
         elif self.phase == "settle":
             if self._wait(0.3):
@@ -185,7 +203,8 @@ class Dealer:
         out = {}
         for arm in ("left", "right"):
             if arm in self.engaged and arm not in self.swing:
-                q, pe, _ = ik.solve(self.tcp[arm], DOWN, self.q[arm], base_pos=self.bases[arm], iters=60)
+                down = ik.matrix_to_quat_xyzw(grip_rotation(self.yaw[arm]))
+                q, pe, _ = ik.solve(self.tcp[arm], down, self.q[arm], base_pos=self.bases[arm], iters=60)
                 self.q[arm], self.worst_ik = q, max(self.worst_ik, pe)
             out[arm] = np.r_[self.q[arm], self.grip[arm]]
         try:

@@ -221,7 +221,8 @@ class StandIn:
     def __init__(self):
         self.pos = {n: np.array([*L.DECK_XY, task._card_z(k)]) for k, n in enumerate(task.CARDS)}
         self.rot = {n: np.eye(3) for n in task.CARDS}
-        self.offset = {}
+        self.offset, self.flat, self.rot0 = {}, {}, {}
+        self.skew = {task.CARDS[0]: 35.0, task.CARDS[2]: -20.0}  # degrees: two cards come off the pack askew
 
     def read(self, names):
         return {n: ((PACK, np.eye(3)) if n == "pack" else (self.pos[n].copy(), self.rot[n].copy())) for n in names}
@@ -241,11 +242,19 @@ class StandIn:
                 self.rot[card] = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
                 front = np.array([edge + over * c, self.pos[card][1], FELT])
                 self.pos[card] = front - self.rot[card][:, 0] * L.CARD_L / 2 + self.rot[card][:, 2] * L.CARD_T / 2
+                self.rot[card] = yaw(self.skew.get(card, 0.0)) @ self.rot[card]  # as if one fingertip had slipped
         elif d.phase == "slide":
-            self.offset.setdefault(card, self.pos[card][:2] - tip[:2])
-            self.pos[card][:2] = tip[:2] + self.offset[card]
-            if self.pos[card][0] - L.CARD_L / 2 > edge - 0.002:
-                self.rot[card], self.pos[card][2] = np.eye(3), FELT + L.CARD_T / 2
+            if card not in self.offset:
+                self.offset[card] = (self.pos[card][:2] - tip[:2], d.yaw[arm], self.skew.get(card, 0.0))
+            offset, hand0, card0 = self.offset[card]
+            turned = math.degrees(d.yaw[arm] - hand0)  # the card turns with the hand that rides on it
+            self.pos[card][:2] = tip[:2] + yaw(turned)[:2, :2] @ offset
+            self.rot[card] = yaw(card0 + turned) @ (np.eye(3) if self.flat.get(card) else self.rot0[card])
+            if not self.flat.get(card) and self.pos[card][0] - L.CARD_L / 2 > edge - 0.002:
+                self.flat[card] = True
+                self.pos[card][2] = FELT + L.CARD_T / 2
+        if d.phase == "touch the front":
+            self.rot0[card] = yaw(-self.skew.get(card, 0.0)) @ self.rot[card]
 
 
 def demo_module():
@@ -271,15 +280,17 @@ def play(mode: str):
         if done:
             break
     cards = {n: scoring.Card(world.pos[n], world.rot[n]) for n in task.CARDS}
-    return run(cards), steps, d.worst_ik, margin
+    askew = max(abs(cards[n].yaw_deg) for n in task.CARDS[:4])
+    return run(cards), steps, d.worst_ik, margin, askew
 
 
 @case
 def demo_on_the_stand_in():
-    value, steps, ik_error, margin = play("full")
+    value, steps, ik_error, margin, askew = play("full")
     assert value == 1.0, value
-    assert steps < L.RUN_LIMIT / 2 and ik_error < 5e-4 and margin > 10.0, (steps, ik_error, margin)
-    print(f"     stand-in: full demo {steps} steps, IK error {1000 * ik_error:.3f} mm, joint margin {margin:.1f} deg")
+    assert steps < L.RUN_LIMIT / 2 and ik_error < 5e-4 and margin > 10.0 and askew < 4.0, (steps, ik_error, margin, askew)
+    print(f"     stand-in: full demo {steps} steps, IK error {1000 * ik_error:.3f} mm, joint margin {margin:.1f} deg, "
+          f"cards left within {askew:.1f} deg of square")
 
 
 @case

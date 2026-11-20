@@ -100,12 +100,13 @@ def _evaluate(objects) -> float:
 def _report(tick, cards, pack, value) -> None:
     start = np.array([*L.DECK_XY, 0.0])
     moved = " ".join(f"{n[-2:]}:{1000 * (c.pos[0] - start[0]):+.1f},{1000 * (c.pos[1] - start[1]):+.1f},"
-                     f"{1000 * (c.pos[2] - FELT_TOP):.2f}/{c.tilt_deg:.0f}" for n, c in list(cards.items())[:4])
+                     f"{1000 * (c.pos[2] - FELT_TOP):.2f}/{c.tilt_deg:.0f}/{c.yaw_deg:+.0f}"
+                     for n, c in list(cards.items())[:5])
     tips = cardkit.fingertips()
     tip = f"{1000 * (tips[::2, 2].min() - DECK_TOP):+.1f}" if len(tips) > 1 else cardkit._ENV.get("finger_error", "n/a")
     t = scoring.tally(TRIAL, cards, pack, FELT_TOP)
     print(f"[deal] step {tick:4d} score {value:.2f} pack {1000 * (pack[0] - start[0]):+.1f},"
-          f"{1000 * (pack[1] - start[1]):+.1f} tip-z {tip} cards(dx,dy,z/tilt mm) {moved} "
+          f"{1000 * (pack[1] - start[1]):+.1f} tip-z {tip} cards(dx,dy,z/tilt/yaw) {moved} "
           f"dealt {[d[-2:] if d else '-' for d in t['dealt']]} strays {len(t['strays'])} {TRIAL.spoiled}", flush=True)
 
 

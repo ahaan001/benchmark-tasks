@@ -28,6 +28,12 @@ class Card:
     def tilt_deg(self) -> float:
         return math.degrees(math.acos(float(np.clip(abs(self.rot[2, 2]), 0.0, 1.0))))
 
+    @property
+    def yaw_deg(self) -> float:
+        """Turn of the long axis about the vertical, within 90 degrees either way."""
+        x, y = (self.rot[0, 0], self.rot[1, 0]) if self.rot[0, 0] >= 0 else (-self.rot[0, 0], -self.rot[1, 0])
+        return math.degrees(math.atan2(y, x))
+
     def corners(self) -> np.ndarray:
         half = np.array([[sx * L.CARD_L / 2, sy * L.CARD_W / 2, 0.0] for sx in (-1, 1) for sy in (-1, 1)])
         return half @ self.rot.T + self.pos
