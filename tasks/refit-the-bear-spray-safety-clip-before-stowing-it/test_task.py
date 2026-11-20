@@ -149,7 +149,7 @@ def seated_means_home_on_the_tab():
     assert not g.seated(*placed(back=0.0015)), "short of the catch"
     assert not g.seated(*placed(back=0.008))
     assert not g.seated(*placed(off=(0.0015, 0.0))) and not g.seated(*placed(off=(0.0, 0.0015)))
-    assert not g.seated(*placed(tilt=7.0))
+    assert g.seated(*placed(tilt=5.0)) and not g.seated(*placed(tilt=10.0))
     stand, up = g.clip_standing(g.CLIP_YAW)
     on_mat = g.clip_on_can(np.array([0.3, -0.02, 0.0033]), g.rot_z(g.CAN_YAW), np.array([*g.CLIP_XY, g.MAT[2] + up]), stand)
     assert not g.seated(*on_mat)

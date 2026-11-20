@@ -216,7 +216,7 @@ def ridge_in_clip() -> np.ndarray:
 SEAT_BACK = 0.0012  # seated: no more than this short of home along the tab (the catch is then past the ridge) ...
 SEAT_OVER = 0.0010  # ... or past it,
 SEAT_OFF = 0.0010  # within this of the tab's line across and square to it,
-SEAT_TILT = 5.0  # and within this of square
+SEAT_TILT = 8.0  # and within this of square: the sleeve's play lets a seated clip lean 5 degrees when the can lies on it
 START_BACK = 0.028  # the clip clears the tab's rear end when it is this far back along the tab
 
 

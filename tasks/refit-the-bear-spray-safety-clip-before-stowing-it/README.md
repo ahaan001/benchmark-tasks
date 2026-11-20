@@ -49,7 +49,7 @@ Scores: 0, 0.5, 1.0. The scorer (`spray_rule.py`) looks at four things each cont
 clip is seated, whether every part of the can is inside the bin's inner walls, and how far the nearest finger is from can and clip.
 
 - **Seated** (`spray_geometry.seated`): the clip within 1.2 mm of home along the tab (so its catch is past the ridge), within 1 mm of
-  the tab's line the other two ways and within 5 degrees of square. Home, its underside lies on the handle. A seated clip leaves
+  the tab's line the other two ways and within 8 degrees of square. Home, its underside lies on the handle. A seated clip leaves
   the tab 0.3 degrees of its 9 degrees of travel; one at the edge of that tolerance, 1.1 degrees.
 - **0 for the whole trial, fired:** the tab is pressed past half its travel (4.5 of 9 degrees: its rear end 4 mm down) on two
   control steps in a row, by anything.
@@ -94,8 +94,8 @@ the demo's modes end as designed:
 2. Left hand: fingers level, in from the robot's side round the can's body 14 cm up, just under the shoulder; close and hold.
 3. Right hand: bring the clip up behind the tab's rear end, in line with the tab, 28 mm short of home; slide it along the tab until
    the scorer's own seat test passes on its pose; stop pushing; open; draw back along the fingers.
-4. Left hand: lift the can 3 cm, turn it level with its head away from the robot, carry it over the bin's wall, lower it into the
-   lane 4 mm above the floor, stop pushing, open, rise.
+4. Left hand: lift the can 3 cm, turn it level with its head away from the robot while bringing it 10 cm toward the bin and down to
+   14.5 cm, carry it over the bin's wall, lower it into the lane 4 mm above the floor, stop pushing, open, rise.
 
 A held part is steered by its own pose (the arms are soft and lag), and the command is brought back to the hand before the fingers
 open. `test_task.py` runs the whole demo on the stand-in with every arm link's collision hull checked against the scene.
@@ -115,13 +115,13 @@ inspect-robots run --embodiment yam_arena --policy dream -E task=task.py -E obje
 PYTHONPATH=<yam-isaac-lab-arena> python3 test_task.py
 ```
 
-Mechanism tests, 200 control steps or fewer each (`--max-steps 200`), for the parts a kinematic stand-in cannot show:
+Mechanism tests, for the parts a kinematic stand-in cannot show (`--max-steps 200` for the first three modes, 400 for `seat` and `lay`):
 
 | Command | What it shows |
 |---|---|
-| `python demokit.py task.py OUT --fast --mode settle,pick,seat` | the can and the clip stand still; the clip comes off the mat in the fingers; held, it slides on and snaps |
-| `python demokit.py task.py OUT --fast --mode blocked` | 20 N on the bare tab's rear end takes it to its stop (fired) |
-| `SPRAY_START=seated python demokit.py task.py OUT --fast --mode blocked,lay` | the same 20 N on a seated clip leaves the tab where it is; the can is lifted, turned level and laid in the bin with the clip still on |
+| `python demokit.py task.py OUT --fast --mode settle,pick,blocked` | the can and the clip stand still; the clip comes off the mat in the fingers; with the can held, 20 N on the bare tab's rear end takes the tab to its stop (fired) |
+| `python demokit.py task.py OUT --fast --mode seat` | the can held, the clip slides along the tab and snaps home, the tab never moving |
+| `SPRAY_START=seated python demokit.py task.py OUT --fast --mode blocked,lay` | the same 20 N on a seated clip moves the tab 0.6 of its 9 degrees; the can is lifted, turned level and laid in the bin with the clip still on |
 
 `SPRAY_START=seated` starts the clip home on the tab. It is for these tests only; the submitted demo and every model trial start as
 the setup says. `TASK_DEBUG=20` prints the scorer's state every 20 control steps.

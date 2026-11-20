@@ -280,6 +280,7 @@ CAN_GRIP_N, CLIP_GRIP_N = 20.0, 10.0
 CLIP_LIFT = 0.15
 LIFT = 0.030  # the can comes this far off the mat before it is turned level: its base then swings 2.5 cm clear of the table
 CARRY_Z = 0.145  # the level can's axis is carried this high: 4 cm over the bin's wall, 2 cm over the cup
+TURN_XY = (0.28, 0.08)  # where the can's hold point is when it has come level: 10 cm nearer the left arm than where it stood, still short of the bin's wall
 STOW_DROP = 0.004  # and is let go lying this far above the bin's floor
 PARK = {"left": (0.16, 0.46, 0.17), "right": (0.16, -0.46, 0.17)}  # where each hand ends: clear of the mat and the bin as the top camera sees them
 MODES = ("full", "none", "literal", "clip_only", "held", "short", "press", "settle", "pick", "seat", "blocked", "lay")
@@ -321,9 +322,9 @@ def demo_script(ctx):
     Other modes, for the README's table: none does nothing; literal puts the can in the bin as it stands, clip off; clip_only fits the
     clip and leaves the can on the mat; held does everything but never lets go of the can; short slides the clip only part of the way
     on and stows the can; press fits nothing and presses the tab with closed fingertips.
-    Mechanism tests of 200 steps or fewer: settle; pick (the clip off the mat); seat (hold the can and slide the clip on, at twice the
-    pace); blocked (20 N on the tab's rear end, held by the test: with SPRAY_START=seated the tab must stay, without it the tab goes
-    down); lay (with SPRAY_START=seated: lift the can, turn it level, lay it in the bin, at twice the pace)."""
+    Mechanism tests: settle; pick (the clip off the mat); blocked (the left hand holds the can and the test pushes the tab's rear end
+    toward the handle with 20 N: with SPRAY_START=seated the tab must stay, without it the tab goes down), 200 steps each; seat (hold the can and slide the clip on) and lay (with SPRAY_START=seated: lift the can, turn it level, lay it in the bin), 400 steps
+    each, as the demo does them."""
     import demokit as d
     from yam_arena import ik
     from yam_arena.constants import FINGER_CLOSED
@@ -332,7 +333,7 @@ def demo_script(ctx):
     left, right, mode = ctx.left, ctx.right, ctx.mode
     if mode not in MODES:
         raise ValueError(f"mode {mode!r} is not one of {MODES}")
-    pace = {"seat": 0.5, "lay": 0.35}.get(mode, 1.0)  # the mechanism tests move faster, to fit 200 steps
+    pace = 1.0  # every mode at the demo's pace: at twice the pace the fingers knock the standing clip over, and at three times the can is not level in time
     T = lambda seconds: seconds * pace  # noqa: E731
     flags = {"held": False, "clip_done": False, "clip_low": False}
     eye = np.eye(3)
@@ -475,8 +476,8 @@ def demo_script(ctx):
         up = p + [0.0, 0.0, LIFT]
         yield from steer(left, can_now, (up, rot), t=T(1.2), label="the can: lift")
         level = g.rot_y(90.0) @ rot  # its top toward +x, its finger loop still toward -y
-        low = np.array([up[0], up[1], TOP + CARRY_Z])  # a hand straight down does not reach as high as a level one: come down while turning
-        yield from steer(left, can_now, (low, level), t=T(3.0), deg=3.0, label="the can: turn it level")
+        low = np.array([TURN_XY[0], TURN_XY[1], TOP + CARRY_Z])  # a hand straight down reaches neither as high nor as far as a level one: come down and toward the arm while turning
+        yield from steer(left, can_now, (low, level), t=T(3.5), deg=3.0, label="the can: turn it level")
         over = np.array([g.STOW_XY[0], g.STOW_XY[1], TOP + CARRY_Z])
         yield from steer(left, can_now, (over, level), t=T(3.5), tol=0.005, deg=3.0, label="the can: over the bin's lane")
         down = np.array([g.STOW_XY[0], g.STOW_XY[1], TOP + g.BIN_WALL + g.CAN_R + STOW_DROP])
@@ -560,12 +561,16 @@ def demo_script(ctx):
         yield from right.wait(1.0)
         report(env, "clip held: ")
         return
-    if mode == "blocked":  # a test's own press, not a hand's: 20 N square down on the tab's rear end for 2 s
+    if mode == "blocked":  # a test's own press, not a hand's: the left hand holds the can, and 20 N pushes the tab's rear end toward the handle for 2 s
+        yield from hold_can()
         s = ctx.state("can")
         rot = s.rotation()
         home_rot, _ = g.clip_home()
         m.push(env, "can", tuple(-20.0 * (rot @ home_rot)[:, 2]), at=tuple(np.asarray(s.pos, float) + rot @ g.TAB_REAR), body="tab")
-        yield from settle(40)
+        for k in range(40):
+            yield
+            if k % 5 == 4:
+                report(env, "pushed: ")
         m.push(env, "can", (0.0, 0.0, 0.0), body="tab")
         yield from settle(30)
         return
