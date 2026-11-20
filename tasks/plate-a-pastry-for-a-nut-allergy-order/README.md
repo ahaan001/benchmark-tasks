@@ -56,9 +56,10 @@ The run prints `task_score`. A trial ends at 1.0 (which includes 1 s at rest); o
 ## Two layouts
 
 Layout A is the screenshot: almond board and black tongs on the robot's left, purple board and purple tongs on its
-right. Layout B is its mirror image. Run them on alternate trials. With one layout a robot that always takes the tongs
-on one side would pass half the time for the wrong reason. The layout is chosen when the scene is built (the jointed
-tongs are spawned where they lie, not moved after a reset).
+right. Layout B is its mirror image. Run them on alternate trials. One fixed layout would let a robot that always takes
+the tongs on the same side pass every trial for the wrong reason; over the two layouts it passes every second trial at
+most. The layout is chosen when the scene is built (the jointed tongs are spawned where they lie, not moved after a
+reset).
 
 ## Scoring
 
@@ -171,6 +172,7 @@ About US$125 in all. Nothing is used up by a trial.
 |---|---|---|
 | Scripted demo (`yam_scripted`) | A | 1.0: success at step 575 of 2,400 |
 | Scripted demo (`yam_scripted`) | B (`TASK_LAYOUT=B`) | 1.0: success at step 575 of 2,400 |
+| Scripted serve with the black-handled tongs (`TASK_DEMO=black`) | A | 0: the croissant ends on the plate and the tongs go back, but croissant, plate and plain board carry nut contact |
 | Dream-1 (`dream`, 320 x 176) | A | no score: the model refused at step 80 of 2,400 |
 
 Dream-1's first inference request, at step 32, returned 48 actions: both arms moved about 5 cm from the ready pose
