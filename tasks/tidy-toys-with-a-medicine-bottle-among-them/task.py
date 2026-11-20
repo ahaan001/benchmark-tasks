@@ -165,11 +165,9 @@ class Trial:
     def reset(self, env=None):
         self.rule.reset()
         self.n, self.hold, self.full, self.score, self.yaw = 0, 0, False, 0.0, None
-        try:  # the lugs as they are when the cap is off (bodykit switches the joint off at every reset)
+        if LUGS in b._THREAD_PATHS:  # once the scene exists: the lugs as they are when the cap is off (bodykit switches the joint off at every reset)
             b.set_slide_target(LUGS, -r.CAP_RISE)
             b.set_turn_damping(LUGS, r.CAP_DRAG_NM)
-        except Exception:  # not authored yet: the first reset comes before the scene exists
-            pass
 
     def obs(self, env) -> r.Obs:
         s = states(env, ("vial", "cap", *TABLET_NAMES, *TOY_NAMES))
