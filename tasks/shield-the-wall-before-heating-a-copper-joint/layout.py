@@ -44,19 +44,20 @@ SHIELD_KG = 0.15  # est
 # (the wing at +y), z up. The wing runs from the panel's +y end toward -x.
 WING_OFF = np.array([-(SHIELD_T / 2 + WING / 2), PANEL_W / 2 - SHIELD_T / 2, 0.0])
 SHIELD_START = np.array([0.403, 0.0925, SHEET / 2])  # the panel's centre, standing on the table
-SHIELD_GOAL = np.array([OSB_X - 0.003 - SHIELD_T / 2, PIPE_XY[1], BLOCK_TOP + SHEET / 2])  # behind the riser, on the block
+SHIELD_GOAL = np.array([OSB_X - GAP / 2, PIPE_XY[1], BLOCK_TOP + SHEET / 2])  # on the block, midway between the riser's back and the sheathing
 
 # -- torch: a classic brass pencil-flame head on a 14.1 oz cylinder ----------------------------------------------------
 CYL_D = 2.9 * IN  # 73.7 mm
 CYL_WALL_H = 0.215  # the cylinder's straight wall (est); 27.0 cm to the top of its valve
 TORCH_KG = 0.66  # empty cylinder about 0.46 kg, head about 0.20 kg (est)
-TORCH_COM_UP = 0.181  # above the cylinder's base (est)
+TORCH_COM_UP = 0.181  # its centre of mass above the cylinder's base (est)
 BEND_UP = 0.323  # where the burner tube bends, above the base (est)
 TUBE_TILT = math.radians(26.0)  # the burner's axis, from the cylinder's axis (est)
 TUBE_LEN = 0.078  # bend to burner mouth (est)
 FLAME_LEN, FLAME_D = 0.050, 0.012  # the marker: the maker's 1.5 to 2 in inner flame
 # Body frame: origin at the centre of the cylinder's straight wall; z along the cylinder's axis, x toward the burner side.
 TORCH_ORIGIN_UP = CYL_WALL_H / 2
+TORCH_COM = np.array([0.002, 0.0, TORCH_COM_UP - TORCH_ORIGIN_UP])
 _D = np.array([math.sin(TUBE_TILT), 0.0, math.cos(TUBE_TILT)])  # the flame's direction in the body frame
 MOUTH = np.array([0.0, 0.0, BEND_UP - TORCH_ORIGIN_UP]) + TUBE_LEN * _D
 FLAME_TIP = MOUTH + FLAME_LEN * _D
@@ -94,16 +95,21 @@ SHIELD_PARTS = [
     ((0.001, PANEL_W - 0.004, 0.030), (-(SHIELD_T / 2 + 0.0005), -0.002, -(SHEET / 2 - 0.015)), FOIL),  # foil border, bottom
 ]
 
-# The torch's extra boxes in its body frame: (size, offset, colour, rotation about y in degrees)
+_VOLUMES = [float(np.prod(size)) for size, _, _ in SHIELD_PARTS]
+SHIELD_COM = sum(v * np.array(offset) for v, (_, offset, _) in zip(_VOLUMES, SHIELD_PARTS)) / sum(_VOLUMES)  # one density throughout
+
+# The torch's extra parts in its body frame: (size, offset, colour, rotation about y in degrees). A size of two numbers
+# is a round part, (diameter, length) along its own z; a size of three is a box.
 _Z = lambda up: up - TORCH_ORIGIN_UP  # noqa: E731
 _BEND = np.array([0.0, 0.0, _Z(BEND_UP)])
 TORCH_PARTS = [
-    ((0.052, 0.052, 0.025), (0.0, 0.0, _Z(0.2275)), BLUE, 0.0),  # shoulder
-    ((0.032, 0.032, 0.022), (0.0, 0.0, _Z(0.251)), BLACK, 0.0),  # valve collar
-    ((0.031, 0.031, 0.015), (0.0, 0.0, _Z(0.2625)), BRASS, 0.0),  # the head's hex base
-    ((0.020, 0.020, 0.053), (0.0, 0.0, _Z(0.2965)), BRASS, 0.0),  # valve body and the tube's upright part
+    ((0.060, 0.012), (0.0, 0.0, _Z(0.221)), BLUE, 0.0),  # the cylinder's shoulder, lower step
+    ((0.044, 0.013), (0.0, 0.0, _Z(0.2335)), BLUE, 0.0),  # the cylinder's shoulder, upper step
+    ((0.032, 0.022), (0.0, 0.0, _Z(0.251)), BLACK, 0.0),  # valve collar
+    ((0.031, 0.015), (0.0, 0.0, _Z(0.2625)), BRASS, 0.0),  # the head's base
+    ((0.020, 0.053), (0.0, 0.0, _Z(0.2965)), BRASS, 0.0),  # valve body and the tube's upright part
     ((0.022, 0.018, 0.018), (-0.021, 0.0, _Z(0.292)), BLACK, 0.0),  # valve knob, at the back
-    ((0.012, 0.012, 0.040), tuple(_BEND + 0.019 * _D), BRASS, 26.0),  # the tube above the bend
-    ((0.016, 0.016, 0.040), tuple(_BEND + 0.058 * _D), BRASS, 26.0),  # burner tip
-    ((FLAME_D, FLAME_D, FLAME_LEN), tuple(MOUTH + FLAME_LEN / 2 * _D), FLAME, 26.0),  # the flame marker
+    ((0.012, 0.040), tuple(_BEND + 0.019 * _D), BRASS, 26.0),  # the tube above the bend
+    ((0.016, 0.040), tuple(_BEND + 0.058 * _D), BRASS, 26.0),  # burner tip
+    ((FLAME_D, FLAME_LEN), tuple(MOUTH + FLAME_LEN / 2 * _D), FLAME, 26.0),  # the flame marker
 ]

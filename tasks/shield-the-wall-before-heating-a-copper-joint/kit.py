@@ -1,14 +1,14 @@
 """Hooks for a yam_arena task file: compound rigid bodies, an every-step callback, and the grippers' finger positions.
 
 Adapted from mech.py of the accepted task never-point-the-nail-gun-at-a-coworker in this repository (compounds, mass
-centres, the control-step hook and the gripper states are that module's; joints, welds and ghosts are left out). One
-addition: a compound body is reported at its own origin (its base shape's centre) instead of its bounding box's
-centre, which moves as the body turns.
+centres, the control-step hook and the gripper states are that module's; joints, welds and ghosts are left out). Two
+additions: a compound's extra parts may be round, and a compound body is reported at its own origin (its base shape's
+centre) instead of its bounding box's centre, which moves as the body turns.
 
 A task file stays pure Python. It imports this module, which hooks yam_arena's scene builder and step when the
 simulator starts:
 
-    kit.compound("torch", [(size, offset, rgb), (size, offset, rgb, (rx, ry, rz)), ...])   # extra boxes, one rigid body
+    kit.compound("torch", [(size, offset, rgb), (size, offset, rgb, (rx, ry, rz)), ...])   # extra parts, one rigid body
     kit.mass_centre("torch", (0, 0, 0.07))
     kit.on_tick(fn)        # fn(sim) after every control step, before scoring: sim.t (s since the reset), sim.states
 
@@ -30,8 +30,9 @@ _TICKS: list = []
 
 
 def compound(name, parts):
-    """Make a task object one rigid body with extra boxes: each part is (size, offset of its centre from the object's
-    centre, rgb) or (size, offset, rgb, (rx, ry, rz) in degrees). The object's mass is the whole body's."""
+    """Make a task object one rigid body with extra parts: each part is (size, offset of its centre from the object's
+    centre, rgb) or (size, offset, rgb, (rx, ry, rz) in degrees). A size (x, y, z) is a box; a size (diameter, length)
+    is a cylinder along the part's own z. The object's mass is the whole body's."""
     COMPOUNDS[name] = [(tuple(p[0]), tuple(p[1]), tuple(p[2]), tuple(p[3]) if len(p) > 3 else None) for p in parts]
 
 
@@ -51,21 +52,30 @@ def _add_parts(prim, name) -> None:
     stage = prim.GetStage()
     for i, (size, offset, rgb, rpy) in enumerate(COMPOUNDS[name]):
         path = prim.GetPath().AppendChild(f"part{i}")
-        cube = UsdGeom.Cube.Define(stage, path)
-        cube.CreateSizeAttr(1.0)
-        xf = UsdGeom.Xformable(cube)
+        if len(size) == 2:
+            r, h = float(size[0]) / 2, float(size[1])
+            geom = UsdGeom.Cylinder.Define(stage, path)
+            geom.CreateAxisAttr("Z")
+            geom.CreateRadiusAttr(r)
+            geom.CreateHeightAttr(h)
+            geom.CreateExtentAttr([Gf.Vec3f(-r, -r, -h / 2), Gf.Vec3f(r, r, h / 2)])
+        else:
+            geom = UsdGeom.Cube.Define(stage, path)
+            geom.CreateSizeAttr(1.0)
+        xf = UsdGeom.Xformable(geom)
         xf.AddTranslateOp().Set(Gf.Vec3d(*(float(v) for v in offset)))
         if rpy is not None:
             xf.AddRotateXYZOp().Set(Gf.Vec3f(*rpy))
-        xf.AddScaleOp().Set(Gf.Vec3f(*size))
-        UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
+        if len(size) == 3:
+            xf.AddScaleOp().Set(Gf.Vec3f(*size))
+        UsdPhysics.CollisionAPI.Apply(geom.GetPrim())
         material = UsdShade.Material.Define(stage, path.AppendChild("look"))
         shader = UsdShade.Shader.Define(stage, material.GetPath().AppendChild("shader"))
         shader.CreateIdAttr("UsdPreviewSurface")
         shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*(c ** 2.2 for c in rgb)))
         shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.4)
         material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
-        UsdShade.MaterialBindingAPI.Apply(cube.GetPrim()).Bind(material)
+        UsdShade.MaterialBindingAPI.Apply(geom.GetPrim()).Bind(material)
 
 
 def matrix_to_quat_xyzw(r) -> np.ndarray:

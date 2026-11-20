@@ -4,10 +4,11 @@
 
 1. The scorer on hand-built poses: every outcome in task.json, and the ways round it (red-team cases).
 2. task.json against the code's constants and the submission's field limits.
-3. The scripted demo, played through a kinematic stand-in for the simulator (not physics: arms follow their commands
-   with a lag and a wrist that sags under the torch, a part the fingers close on follows the hand, a part let go
-   drops to what is under it). It runs the real demo_script, the harness's own IK and the real scorer, and checks reach,
-   joint limits, that nothing is carried through the wall or the riser, and the score of each cheat mode.
+3. The scripted demo, played through a stand-in for the simulator (statics, not dynamics: arms follow their commands
+   with a lag and give under a held part as the simulator's joint drives do, a part the fingers close on follows the
+   hand, a part let go drops to what is under it). It runs the real demo_script, the harness's own IK and the real
+   scorer, and checks reach, joint limits, that nothing is carried through the wall or the riser, that nothing is let
+   go while an arm still carries it, and the score of each cheat mode.
 """
 
 import json
@@ -225,9 +226,9 @@ def test_shield_held_in_place_by_a_hand_counts():
 
 
 def test_small_placement_errors_still_shield():
-    for off in ((0.0, 0.04, 0.0), (0.0, -0.04, 0.0), (-0.02, 0.0, 0.0)):
+    for off in ((0.0, 0.04, 0.0), (0.0, -0.04, 0.0), (-0.012, 0.0, 0.0), (0.012, 0.0, 0.0)):
         assert S.shielded(SCENE, shield_at(off)), off
-    assert S.shielded(SCENE, shield_at((-0.01, 0.0, 0.0), L.ry(-8.0)))
+    assert S.shielded(SCENE, shield_at((0.01, 0.0, 0.0), L.ry(-8.0)))  # its top leaning 2 cm toward the riser
 
 
 def test_flame_on_bare_wood_elsewhere():
@@ -245,7 +246,7 @@ def test_flame_on_bare_wood_elsewhere():
 
 def test_flame_near_shielded_wood_is_no_hazard():
     t = fresh()
-    behind = (L.OSB_X - L.SHIELD_T - 0.02, L.PIPE_XY[1] + 0.06, TOP + 0.30)  # 2 cm off the shield's face, wood behind it
+    behind = (L.SHIELD_GOAL[0] - L.SHIELD_T / 2 - 0.006, L.PIPE_XY[1] + 0.06, TOP + 0.30)  # 6 mm off the shield's face, 2.5 cm from the wood behind it
     play(t, 1.0, torch_tip_at(behind), SHIELD_GOAL)
     assert not t.hazard
 
@@ -376,22 +377,87 @@ class _State:
         self.pos, self.quat_xyzw = np.asarray(pos, float), matrix_to_quat_xyzw(np.asarray(r, float))
 
 
+G = 9.81
+KG = {"torch": L.TORCH_KG, "shield": L.SHIELD_KG}
+COM = {"torch": L.TORCH_COM, "shield": L.SHIELD_COM}
+
+
 class World:
-    """Arms that lag their commands, a wrist that sags by `droop` rad under the torch, parts that follow a closed hand."""
+    """Arms that lag their commands and give under what they hold as the simulator's do: every joint drive is a spring
+    (80 N m/rad at joints 1 to 3, 10 at joints 4 to 6, times `soft`); the arm's own weight is compensated, a held
+    part's is not. A part the fingers close on follows the hand; one let go drops to what is under it. What a held
+    part stands on pushes back just enough to keep it from sinking in."""
 
-    def __init__(self, lag=0.35, droop=0.15):
-        from yam_arena.constants import FINGER_OPEN, READY
+    def __init__(self, lag=0.35, soft=1.0):
+        from yam_arena.constants import FINGER_OPEN, READY, SHOULDER, WRIST
 
-        self.lag, self.droop, self.open = lag, droop, FINGER_OPEN
+        self.lag, self.open = lag, FINGER_OPEN
+        self.give = soft / np.array([SHOULDER["stiffness"]] * 3 + [WRIST["stiffness"]] * 3)
         self.pose = {"torch": list(torch_on_bench()), "shield": [L.SHIELD_START + UP, np.eye(3)]}
-        self.q = {s: np.array(READY, float) for s in ("left", "right")}
+        self.ref = {s: np.array(READY, float) for s in ("left", "right")}  # the command, lagged
+        self.seen = {s: np.array(READY, float) for s in ("left", "right")}  # where the arm is
         self.f = {s: FINGER_OPEN for s in ("left", "right")}
-        self.held, self.notes, self.margin = {}, [], 180.0
+        self.held, self.notes, self.margin, self.trace = {}, [], 180.0, []
 
-    def tcp(self, side):
+    def tcp(self, side, q=None):
         from yam_arena import ik, station
 
-        return ik.tcp_pose(self.q[side], np.asarray(station.BASES[side], float))
+        return ik.tcp_pose(self.seen[side] if q is None else q, np.asarray(station.BASES[side], float))
+
+    def feet(self, name, pose):
+        """Points on the part's underside."""
+        p, r = pose
+        if name == "torch":
+            base = S.torch_base((p, r))
+            return [base] + [base + L.CYL_D / 2 * (r @ np.array([math.cos(a), math.sin(a), 0.0])) for a in np.linspace(0.0, 2 * math.pi, 12, endpoint=False)]
+        return [c + rot @ (np.array([sx, sy, -1.0]) * half) for c, half, rot in S.shield_boxes((p, r)) for sx in (-1, 1) for sy in (-1, 1)]
+
+    def floor(self, point):
+        x, y = point[:2]
+        if L.STUD_FRONT_X <= x <= L.OSB_X and L.STUD_R_Y1 <= y <= L.STUD_L_Y0:
+            return TOP + L.BLOCK_TOP
+        return TOP + (0.001 if math.hypot(x - L.TORCH_HOME[0], y - L.TORCH_HOME[1]) <= L.MARK_D / 2 else 0.0)
+
+    def sink(self, name, pose):
+        """How far the part's lowest point is under what it stands on."""
+        return max(self.floor(q) - q[2] for q in self.feet(name, pose))
+
+    def stand(self, name, pose):
+        """The pose with the part upright on what is under it, where it is."""
+        p, r = pose
+        heading = math.atan2(r[1, 0], r[0, 0])
+        r = rz(math.degrees(heading))
+        foot = S.torch_base((p, pose[1])) if name == "torch" else np.asarray(p, float)
+        flat = np.array([foot[0], foot[1], 0.0]) + (L.TORCH_ORIGIN_UP if name == "torch" else L.SHEET / 2) * r[:, 2]
+        return [flat + np.array([0.0, 0.0, max(self.floor(q) for q in self.feet(name, (flat, r)))]), r]
+
+    def _settle(self, side, name):
+        """Where the arm comes to rest under the part it holds: its joints and the part's pose. While the arm does
+        not yet carry the part clear of what it stands on, the part stays standing there and the hand stays with it."""
+        from yam_arena import ik, station
+
+        _, dp, dr = self.held[name]
+        weight, com = np.array([0.0, 0.0, -KG[name] * G]), dp + dr @ COM[name]
+
+        def point(q):
+            p, r = self.tcp(side, q)
+            return p + r @ com
+
+        q = self.seen[side].copy()
+        for _ in range(6):
+            p0 = point(q)
+            q = self.ref[side] + self.give * np.array([(point(q + 1e-6 * e) - p0) @ weight / 1e-6 for e in np.eye(6)])
+        p, r = self.tcp(side, q)
+        pose = [p + r @ dp, r @ dr]
+        if self.sink(name, pose) <= 0.0:
+            return q, pose
+        stood = self.stand(name, self.pose[name] if self.sink(name, self.pose[name]) > -0.002 else pose)
+        hand_r = stood[1] @ dr.T
+        hand_p = stood[0] - hand_r @ dp
+        if math.hypot(*(self.tcp(side, self.ref[side])[0] - hand_p)[:2]) > 0.03:
+            self.notes.append(f"the {name} is pulled sideways while it stands")
+        q = ik.solve(hand_p, ik.matrix_to_quat_xyzw(hand_r), self.seen[side], base_pos=np.asarray(station.BASES[side], float), iters=60)[0]
+        return q, stood
 
     def grasp(self, name):
         p, r = self.pose[name]
@@ -407,20 +473,17 @@ class World:
                 out[f"{side}_finger_{tag}"] = _State(pos + rot @ np.array([sx * (abs(self.f[side]) + 0.0045), 0.0, 0.0]), rot)
         return out
 
-    def floor(self, name):
-        p = self.pose[name][0]
-        on_block = L.STUD_FRONT_X - 0.01 <= p[0] <= L.OSB_X and L.STUD_R_Y1 <= p[1] <= L.STUD_L_Y0
-        return TOP + (L.BLOCK_TOP if on_block else 0.0) + (0.001 if name == "torch" else 0.0)
-
     def step(self, ctx):
         from yam_arena import ik
 
         for side, arm in (("left", ctx.left), ("right", ctx.right)):
-            sag = np.zeros(6)
-            if self.held.get("torch", (None,))[0] == side:
-                sag[3] = self.droop * math.sqrt(max(0.0, 1.0 - self.tcp(side)[1][2, 2] ** 2))
-            self.q[side] = self.q[side] + self.lag * (arm.cmd[:6] + sag - self.q[side])
+            self.ref[side] = self.ref[side] + self.lag * (arm.cmd[:6] - self.ref[side])
             self.margin = min(self.margin, math.degrees(min(np.min(arm.cmd[:6] - ik.LOWER), np.min(ik.UPPER - arm.cmd[:6]))))
+            mine = [n for n, h in self.held.items() if h[0] == side]
+            if mine:
+                self.seen[side], self.pose[mine[0]] = self._settle(side, mine[0])
+            else:
+                self.seen[side] = self.ref[side].copy()
             want = arm.cmd[6] * self.open
             pos, rot = self.tcp(side)
             for name in self.pose:
@@ -435,21 +498,19 @@ class World:
                 self.f[side] = min(self.f[side], -max(widths))
             for name, (s, _, _) in list(self.held.items()):
                 if s == side and -want > self.grasp(name)[1] / 2 + 0.002:
+                    if np.linalg.norm(self.tcp(side, self.ref[side])[0] - pos) > 0.01:
+                        self.notes.append(f"the {name} was let go while the arm still carried it")
                     del self.held[name]
-        for name, (side, dp, dr) in self.held.items():
-            pos, rot = self.tcp(side)
-            self.pose[name] = [pos + rot @ dp, rot @ dr]
         for name in self.pose:
             p, r = self.pose[name]
-            low = S.torch_base((p, r))[2] if name == "torch" else p[2] - L.SHEET / 2
-            if name not in self.held and low > self.floor(name) + 1e-6:
+            depth = self.sink(name, (p, r))
+            if name not in self.held and depth < -1e-6:
                 if S.angle_deg(r[:, 2], (0, 0, 1)) > 8.0:
                     self.notes.append(f"the {name} was let go tilted")
-                self.pose[name] = [p - np.array([0.0, 0.0, min(0.02, low - self.floor(name))]), r]
-            if low < self.floor(name) - 0.004:
+                self.pose[name] = [p - np.array([0.0, 0.0, min(0.02, -depth)]), r]
+            if depth > 0.004:
                 self.notes.append(f"the {name} is pushed into what is under it")
-        plates = S.shield_boxes(tuple(self.pose["shield"]))
-        for c, h, r in plates:
+        for c, h, r in S.shield_boxes(tuple(self.pose["shield"])):
             if any(S.point_box(np.array([*L.PIPE_XY, TOP + z]), c, h, r)[0] < L.PIPE_D / 2 for z in np.linspace(0.0, L.WALL_H, 26)):
                 self.notes.append("the shield passes through the riser")
             for centre, half in SCENE.wood:
@@ -458,12 +519,13 @@ class World:
                     self.notes.append("the shield passes through the wall")
         if any(S.point_box(S.flame(tuple(self.pose["torch"]))[1], centre, half)[0] < 1e-4 for centre, half in SCENE.wood):
             self.notes.append("the flame rod passes into the wall")
+        self.trace.append(({s: q.copy() for s, q in self.seen.items()}, dict(self.f), {n: (p.copy(), r.copy()) for n, (p, r) in self.pose.items()}))
 
 
-def run_demo(mode, droop=0.15, lag=0.35, max_steps=2400):
+def run_demo(mode, soft=1.0, lag=0.35, max_steps=2400):
     import demokit as d
 
-    world = World(lag, droop)
+    world = World(lag, soft)
 
     class Ctx(d.Ctx):
         def __init__(self):
@@ -471,7 +533,7 @@ def run_demo(mode, droop=0.15, lag=0.35, max_steps=2400):
             self.left, self.right = d.Arm(self, "left"), d.Arm(self, "right")
 
         def observed(self, side):
-            return np.r_[world.q[side], world.f[side] / world.open]
+            return np.r_[world.seen[side], world.f[side] / world.open]
 
         def states(self):
             return world.states()
@@ -496,13 +558,23 @@ def run_demo(mode, droop=0.15, lag=0.35, max_steps=2400):
 
 
 def test_demo_reaches_full_score_inside_the_run_limit():
-    for droop in (0.0, 0.15, 0.25):
-        trial, world, steps, ik_mm = run_demo("full", droop)
-        assert trial.score() == 1.0 and not trial.hazard, (droop, trial.score(), trial.hazard)
+    for soft in (0.0, 0.8, 1.3):  # rigid arms; the give measured in the simulator; a third softer than the drives say
+        trial, world, steps, ik_mm = run_demo("full", soft)
+        assert trial.score() == 1.0 and not trial.hazard, (soft, trial.score(), trial.hazard)
         assert steps <= 2400 / 2, steps  # the run limit is at least twice the demo
         assert ik_mm < 2.0, ik_mm
         assert world.margin >= 8.0, world.margin  # degrees from any joint limit, commands included
         assert not world.notes, sorted(set(world.notes))
+
+
+def test_smoke_modes_fit_a_smoke_run():
+    for mode in ("liftshield", "backshield", "lifttorch", "backtorch", "fasttorch"):
+        for soft in (0.8, 1.3):
+            trial, world, steps, _ = run_demo(mode, soft)
+            assert steps - round(2.0 / DT) <= 200, (mode, soft, steps)
+            assert not world.notes, (mode, sorted(set(world.notes)))
+    trial, world, steps, _ = run_demo("fastshield")  # runs on past 200 steps; by then the shield has been let go
+    assert trial.now["covered"] and not world.notes, sorted(set(world.notes))
 
 
 def test_demo_cheat_modes_score_as_task_json_says():
