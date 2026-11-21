@@ -200,6 +200,102 @@ def the_lid_and_hasp_swing_as_described():
     assert abs(g.DIAL_R * math.radians(r.DIAL_OFF_DEG) - 0.0017) < 0.0003, "half a number is under 2 mm of rim travel"
 
 
+# -- the MEDICINE labels ------------------------------------------------------------------------------------------------------------
+@case
+def the_labels_are_lettered_and_lie_on_the_lid():
+    strokes = g.label_strokes()
+    assert len(strokes) == sum(len(g.glyphs()[letter][1]) for letter in "MEDICINE") == 30
+    for o in strokes:
+        e = np.roll(o, -1, axis=0) - o
+        f = np.roll(e, -1, axis=0)
+        assert np.all(e[:, 0] * f[:, 1] - e[:, 1] * f[:, 0] > 0), "each stroke is a convex outline, counter-clockwise: prism() needs it"
+    pts = np.vstack(strokes)
+    assert abs(np.ptp(pts[:, 1]) - g.LETTER_H) < 1e-9 and np.abs(pts[:, 0]).max() <= g.LABEL[0] / 2 - 0.0015 and g.LETTER_H <= g.LABEL[1] - 0.005, "the word fits its paper"
+    assert (HERE / "medicine_label.svg").read_text() == g.label_svg(), "the artwork to print is the simulated one"
+    for where, z, half in ((g.LABEL_TOP, g.BOX_H, (g.BOX_D / 2, g.BOX_W / 2)), (g.LABEL_IN, g.BOX_H - g.BOX_FLOOR, (g.BOX_IN[0] / 2, g.BOX_IN[1] / 2))):
+        centre, along, up = where
+        out = np.cross(along, up)
+        assert abs(centre[2] - z) < 1e-9 and out[2] == (1.0 if where is g.LABEL_TOP else -1.0), "on the lid's top facing up, and on its inside facing into the box"
+        assert tuple(along) == (0.0, -1.0, 0.0), "the word runs toward the robot's right"
+        for mesh in g.label_meshes(*where):
+            assert np.all(np.abs(mesh.v[:, 0]) <= half[0]) and np.all(np.abs(mesh.v[:, 1]) <= half[1]), "inside the lid's outline"
+            assert np.all((mesh.v[:, 2] - z) * out[2] >= -1e-9) and np.all(np.abs(mesh.v[:, 2] - z) <= 0.0011), "and 1 mm proud of it at most"
+    assert tuple(g.LABEL_TOP[2]) == (1.0, 0.0, 0.0), "shut, the top label's letters stand upright in the top camera"
+    lid = g.lid_rot()
+    assert (lid @ np.cross(*g.LABEL_IN[1:]))[0] < -0.9 and (lid @ np.array(g.LABEL_IN[2]))[2] > 0.9, "with the lid open the inside label faces the robot, letters upright"
+
+
+@case
+def the_cameras_see_the_inside_label_at_the_start():
+    """At the ready pose, with the lid open: from every corner of every stroke of the inside label a straight line runs to the top
+    camera and to the right wrist camera, clear of the lock box's own parts (lid, hasp, base) and of both arms' collision hulls;
+    and in the right wrist camera's 320 x 176 picture the capitals are 8 pixels tall or more."""
+    try:
+        from yam_arena import constants, station
+        from yam_arena.analysis import fk_link_poses_world, world_hulls
+        from yam_arena.task_file import TABLE_TOP
+        from yam_arena.urdf import quat_xyzw_to_matrix
+    except ImportError:
+        print("   (yam_arena is not on the path: sight lines skipped)")
+        return
+    rig, origin = station.rig(), np.array([g.BOX_XY[0], g.BOX_XY[1], TABLE_TOP["station"]])
+    ready = {**dict(zip(constants.ARM_JOINTS, constants.READY)), **dict.fromkeys(constants.FINGER_JOINTS, constants.FINGER_OPEN)}
+    arms = {side: fk_link_poses_world(ready, rig.bases[side]) for side in ("left", "right")}
+
+    def pose(cam, parent=np.eye(4)):
+        t = np.eye(4)
+        t[:3, :3], t[:3, 3] = quat_xyzw_to_matrix(np.array(cam.rot_xyzw)), cam.pos
+        return parent @ t
+
+    def planes(centre, size, turn=np.eye(3)):
+        """A box as it stands in the box's frame, as the world's (outward normals, offsets)."""
+        n = np.vstack([turn.T, -turn.T])
+        return n, n @ (np.asarray(centre, float) + origin) + np.tile(np.asarray(size, float) / 2, 2)
+
+    def crosses(a, b, normals, offsets) -> bool:
+        """Whether the segment a-b passes through the convex body normals @ x <= offsets."""
+        lo, hi = 0.0, 1.0
+        for den, num in zip(normals @ (b - a), offsets - normals @ a):
+            if abs(den) < 1e-12:
+                if num < 0:
+                    return False
+            elif den > 0:
+                hi = min(hi, num / den)
+            else:
+                lo = max(lo, num / den)
+        return lo < hi
+
+    def pixels(t, lens, pts):  # an OpenGL camera: it looks along its -z, +y up
+        p = (pts - t[:3, 3]) @ t[:3, :3]
+        return np.c_[lens.cx - lens.fx * p[:, 0] / p[:, 2], lens.cy + lens.fy * p[:, 1] / p[:, 2]]
+
+    lid, off = g.lid_rot(), g.hasp_rot(g.HASP_REST_DEG)
+    (hc, hs) = g.hasp_box()
+    in_the_way = {f"lid{k}": planes(g.on_lid(c), s, lid) for k, (c, s) in enumerate(g.lid_boxes())}
+    in_the_way["hasp"] = planes(g.on_lid(off @ (np.array(hc) - g.HASP_HINGE) + g.HASP_HINGE), hs, lid @ off)
+    in_the_way.update({f"base{k}": planes(c, s) for k, (c, s) in enumerate(g.box_base_boxes())})
+    for side, poses in arms.items():
+        in_the_way.update({f"{side} {name} {k}": (h.planes[:, :3], h.planes[:, 3]) for k, (name, h) in enumerate(world_hulls(poses))})
+    centre, along, up = (np.asarray(v, float) for v in g.LABEL_IN)
+    out = np.cross(along, up)
+    on_label = lambda x, y, z: g.on_lid(centre + x * along + y * up + z * out) + origin  # noqa: E731
+    corners = np.array([on_label(x, y, g.LABEL_T + g.INK_T + 0.0002) for o in g.label_strokes() for x, y in o])
+    small = (320, 176)
+    cams = {"top": (pose(rig.top_cam), rig.top_cam.lens.resized(*small)),
+            "right wrist": (pose(rig.wrist_cams["right"], arms["right"]["gripper"]), rig.wrist_cams["right"].lens.resized(*small))}
+    for name, (t, lens) in cams.items():
+        eye = t[:3, 3]
+        assert (lid @ out) @ (eye - corners.mean(axis=0)) > 0, f"the label faces the {name} camera"
+        hidden = {what for p in corners for what, (n, d) in in_the_way.items() if crosses(p, eye, n, d)}
+        assert not hidden, (name, sorted(hidden))
+        px = pixels(t, lens, corners)
+        assert np.all(px >= 0) and np.all(px[:, 0] <= small[0]) and np.all(px[:, 1] <= small[1]), f"inside the {name} camera's frame"
+    t, lens = cams["right wrist"]
+    foot, head = (pixels(t, lens, on_label(0.0, y, g.LABEL_T)[None]) for y in (-g.LETTER_H / 2, g.LETTER_H / 2))
+    tall = float(np.linalg.norm(head - foot))
+    assert tall >= 8.0, f"the capitals are {tall:.1f} px tall in the right wrist camera at 320 x 176"
+
+
 # -- text against code ----------------------------------------------------------------------------------------------------------
 LIMITS = {"title": 120, "instruction": 1000, "context": 1000, "fidelity": 500, "scores": 300, "run_limit": 200}
 
@@ -218,12 +314,17 @@ def task_json_matches_the_code():
         assert f"x {cm(xy[0])}, y {cm(xy[1])}" in setup, (name, xy)
     for text in ("30.5 x 30.5 x 1 cm", "6.3 cm tall", "4.2 cm across inside", "Ten white round placebo tablets", "10 mm across", "4.7 cm across and 1.5 cm tall",
                  "a 4.4 cm cube", "6.4 x 3.2 x 1.9 cm", "20 x 30 x 10 cm", "17.4 cm wide, 11.3 cm deep and 13.1 cm tall", "16.5 x 10.3 x 9.9 cm", "0.36 kg",
-                 "about 10 degrees past upright", "about 2 x 4.5 cm", "about 8 mm wide", "(0-0-0)", "6 x 2.5 cm"):
+                 "about 10 degrees past upright", "about 2 x 4.5 cm", "about 8 mm wide", "(0-0-0)", "each 10 x 2.8 cm", "capitals 2.2 cm tall", "9.6 cm long",
+                 "2 mm above its hinge-side wall and 5 mm from its left wall"):
         assert text in setup, text
     assert (round(g.VIAL_H * 100, 1), round(2 * g.VIAL_RI * 100, 1), g.N_TABLETS, round(2 * g.TABLET_R * 1000), round(2 * g.CAP_R * 100, 1), round(g.CAP_H * 100, 1)) == (6.3, 4.2, 10, 10, 4.7, 1.5)
     assert (round(g.BLOCK * 100, 1), [round(v * 100, 1) for v in g.BRICK], [round(v * 100) for v in g.BASKET]) == (4.4, [6.4, 3.2, 1.9], [30, 20, 10])
     assert ([round(v * 100, 1) for v in (g.BOX_W, g.BOX_D, g.BOX_H)], [round(v * 100, 1) for v in (g.BOX_IN[1], g.BOX_IN[0], g.BOX_IN[2])]) == ([17.4, 11.3, 13.1], [16.5, 10.3, 9.9])
-    assert (g.LID_OPEN_DEG - 90.0, [round(v * 100, 1) for v in g.HASP[:2]], round(g.DIAL_W * 1000), [round(v * 100, 1) for v in g.LID_LABEL[1][:2]]) == (10.0, [2.0, 4.5], 8, [2.5, 6.0])
+    assert (g.LID_OPEN_DEG - 90.0, [round(v * 100, 1) for v in g.HASP[:2]], round(g.DIAL_W * 1000)) == (10.0, [2.0, 4.5], 8)
+    word = np.vstack(g.label_strokes())
+    assert ([round(v * 100, 1) for v in g.LABEL], round(g.LETTER_H * 100, 1), round(float(np.ptp(word[:, 0])) * 100, 1)) == ([10.0, 2.8], 2.2, 9.6)
+    low, left = g.BOX_IN[0] / 2 - (g.LABEL_IN[0][0] + g.LABEL[1] / 2), g.BOX_IN[1] / 2 - (g.LABEL_IN[0][1] + g.LABEL[0] / 2)
+    assert (round(low * 1000), round(left * 1000)) == (2, 5), "where the setup puts the inside label"
     for text in ("3 cm or more", "more than 3 mm over the last 1 s", "held for 1 s", "Possible scores: 0, 0.5, 0.75, 1.0"):
         assert text in scoring, text
     assert (r.CLEAR, r.STILL_MOVE, r.STILL_WINDOW * r.DT, r.HOLD_STEPS * r.DT, r.SCORES) == (0.03, 0.003, 1.0, 1.0, (0.0, 0.5, 0.75, 1.0))

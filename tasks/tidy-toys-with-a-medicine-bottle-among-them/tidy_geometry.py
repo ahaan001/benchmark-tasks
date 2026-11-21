@@ -226,7 +226,63 @@ def lid_boxes() -> list:
             ((0.0, -(BOX_W - BOX_WALL) / 2, zs), (BOX_D, BOX_WALL, hs)), ((0.0, (BOX_W - BOX_WALL) / 2, zs), (BOX_D, BOX_WALL, hs))]
 
 
-LID_LABEL = ((0.0, 0.0, BOX_H + 0.0003), (0.025, 0.060, 0.0006))  # MEDICINE, on the lid's top
+# -- the MEDICINE labels: one artwork (medicine_label.svg), two copies on the lid ------------------------------------------------------
+LABEL = (0.100, 0.028)  # white paper: along the word, across it
+LETTER_H = 0.022  # the black capitals' height; the word is 4.38 times as long (96 mm)
+STEM, BAR, GAP = 0.17, 0.18, 0.10  # of that height: an upright stroke's width, a level stroke's, the space between letters
+LABEL_T, INK_T = 0.0006, 0.0004  # drawn only: the paper stands this far off the lid, the letters this far off the paper
+# (centre on the shut lid, the way the word runs, the way the letters' tops point), in the box's frame. Both read from the robot's side.
+LABEL_TOP = ((0.0, 0.0, BOX_H), (0.0, -1.0, 0.0), (1.0, 0.0, 0.0))  # on the lid's top, for when the box is shut
+# Inside the lid, for while it stands open: 2 mm from the hinge-side wall and 5 mm from the wall on the robot's left. That corner of the
+# lid's inside is what neither the hasp nor the right arm at its ready pose hides from the top camera or the right wrist camera.
+LABEL_IN = ((BOX_IN[0] / 2 - 0.002 - LABEL[1] / 2, BOX_IN[1] / 2 - 0.005 - LABEL[0] / 2, BOX_H - BOX_FLOOR), (0.0, -1.0, 0.0), (-1.0, 0.0, 0.0))
+
+
+def _bar(x0: float, y0: float, x1: float, y1: float) -> list:
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+
+def glyphs() -> dict:
+    """Condensed block capitals as {letter: (width, strokes)}, in units of their height. A stroke is a convex outline, counter-clockwise."""
+    s, b, c, hook = STEM, BAR, 0.26, 0.29  # c: how far a D's or a C's corners are cut; hook: how far a C's ends turn in
+    m_w, n_w, d_w, c_w, e_w, diag, low = 0.72, 0.58, 0.55, 0.53, 0.48, 0.19, 0.25
+    return {
+        "M": (m_w, [_bar(0, 0, s, 1), _bar(m_w - s, 0, m_w, 1), [(0, 1), (m_w / 2 - diag / 2, low), (m_w / 2 + diag / 2, low), (diag, 1)],
+                    [(m_w / 2 - diag / 2, low), (m_w / 2 + diag / 2, low), (m_w, 1), (m_w - diag, 1)]]),
+        "E": (e_w, [_bar(0, 0, s, 1), _bar(s, 1 - b, e_w, 1), _bar(s, 0.5 - b / 2, e_w - 0.07, 0.5 + b / 2), _bar(s, 0, e_w, b)]),
+        "D": (d_w, [_bar(0, 0, s, 1), _bar(s, 1 - b, d_w - c, 1), _bar(s, 0, d_w - c, b), _bar(d_w - s, c, d_w, 1 - c),
+                    [(d_w - c, 1), (d_w - c, 1 - b), (d_w - s, 1 - c), (d_w, 1 - c)], [(d_w - c, 0), (d_w, c), (d_w - s, c), (d_w - c, b)]]),
+        "I": (s, [_bar(0, 0, s, 1)]),
+        "C": (c_w, [_bar(0, c, s, 1 - c), _bar(c, 1 - b, c_w, 1), _bar(c, 0, c_w, b), _bar(c_w - s, 1 - hook, c_w, 1 - b), _bar(c_w - s, b, c_w, hook),
+                    [(c, 1), (0, 1 - c), (s, 1 - c), (c, 1 - b)], [(c, 0), (c, b), (s, c), (0, c)]]),
+        "N": (n_w, [_bar(0, 0, s, 1), _bar(n_w - s, 0, n_w, 1), [(0, 1), (n_w - diag, 0), (n_w, 0), (diag, 1)]]),
+    }
+
+
+def label_strokes(word: str = "MEDICINE") -> list:
+    """The word's strokes as outlines (n, 2) in metres, in the label's frame: x along the word, y up the letters, from the label's middle."""
+    font, x, out = glyphs(), 0.0, []
+    for letter in word:
+        width, strokes = font[letter]
+        out += [np.array(o, float) + (x, 0.0) for o in strokes]
+        x += width + GAP
+    return [(o - ((x - GAP) / 2, 0.5)) * LETTER_H for o in out]
+
+
+def label_meshes(centre, along, up) -> tuple:
+    """A label's paper and its word, as meshes in the box's frame with the lid shut."""
+    turn = np.column_stack([along, up, np.cross(along, up)])
+    paper = m.box((LABEL[0], LABEL[1], LABEL_T), (0.0, 0.0, LABEL_T / 2))
+    word = m.join(*[m.prism(o, LABEL_T / 2, LABEL_T + INK_T) for o in label_strokes()])
+    return tuple(m.Mesh(part.v @ turn.T + np.asarray(centre, float), part.f) for part in (paper, word))
+
+
+def label_svg() -> str:
+    """The label at full size, for printing: what medicine_label.svg holds."""
+    w, h = LABEL[0] * 1000, LABEL[1] * 1000
+    paths = "".join("M" + " L".join(f"{w / 2 + x * 1000:.2f},{h / 2 - y * 1000:.2f}" for x, y in o) + " Z " for o in label_strokes())
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:g}mm" height="{h:g}mm" viewBox="0 0 {w:g} {h:g}">\n'
+            f'<rect width="{w:g}" height="{h:g}" fill="#ffffff" stroke="#000000" stroke-width="0.1"/>\n<path fill="#000000" d="{paths.strip()}"/>\n</svg>\n')
 
 
 def lid_rot(deg: float = LID_OPEN_DEG) -> np.ndarray:

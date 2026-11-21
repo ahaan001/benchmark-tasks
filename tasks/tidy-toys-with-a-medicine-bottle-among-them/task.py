@@ -66,9 +66,11 @@ def lock_box():
     """The lock box, fixed to the floor: a base, a lid on a hinge along the back of the rim, a hasp on a hinge at the lid's front edge
     that rests on a sprung stop (the lock's catch) 8 degrees off the front, and three dials on the front that turn freely on a detent."""
     swing = g.lid_rot()
-    lid_parts = [(f"lid{k}", m.Mesh((m.box(s, c).v - g.LID_HINGE) @ swing.T + g.LID_HINGE, m.box(s, c).f), "case") for k, (c, s) in enumerate(g.lid_boxes())]
-    label = m.box(g.LID_LABEL[1], g.LID_LABEL[0])
-    lid_parts.append(("lid_label", m.Mesh((label.v - g.LID_HINGE) @ swing.T + g.LID_HINGE, label.f), "label"))
+    open_ = lambda mesh: m.Mesh((mesh.v - g.LID_HINGE) @ swing.T + g.LID_HINGE, mesh.f)  # noqa: E731  (a part of the shut lid, as the lid stands at the start)
+    lid_parts = [(f"lid{k}", open_(m.box(s, c)), "case") for k, (c, s) in enumerate(g.lid_boxes())]
+    for name, where in (("label_top", g.LABEL_TOP), ("label_in", g.LABEL_IN)):  # MEDICINE, in black capitals on white: drawn only
+        paper, word = g.label_meshes(*where)
+        lid_parts += [(name, open_(paper), "label"), (f"{name}_word", open_(word), "ink")]
     lid_cols = [m.col_box(f"c_lid{k}", s, tuple(g.on_lid(c)), swing) for k, (c, s) in enumerate(g.lid_boxes())]
     (hc, hs), rest = g.hasp_box(), g.hasp_rot(g.HASP_REST_DEG)
     hasp_centre = g.on_lid(rest @ (np.array(hc) - g.HASP_HINGE) + g.HASP_HINGE)
